@@ -12,9 +12,12 @@ import {
   Building2,
   User,
   CalendarClock,
+  Paperclip,
+  FileText,
 } from "lucide-react";
 import api from "../api/client";
 import { fmtDate, isOverdue } from "../utils/format";
+import { ACCEPT_MOM, buildFormData, uploadUrl } from "../utils/upload";
 
 const EMPTY_FORM = {
   remark_description: "",
@@ -65,6 +68,7 @@ function TaskRemarkModal({ task, onClose, onSaved, saving, setSaving }) {
     meeting_date: new Date().toISOString().slice(0, 10),
     status: task.status === "Done" ? "In Progress" : task.status,
   });
+  const [momFile, setMomFile] = useState(null);
   const [error, setError] = useState("");
 
   const switchMode = (next) => {
@@ -108,7 +112,8 @@ function TaskRemarkModal({ task, onClose, onSaved, saving, setSaving }) {
         payload.status = form.status;
         if (form.next_review_date) payload.next_review_date = form.next_review_date;
       }
-      await api.post("/tasks/remarks", payload);
+      const fd = buildFormData(payload, momFile);
+      await api.post("/tasks/remarks", fd);
       onSaved();
       onClose();
     } catch (err) {
@@ -220,8 +225,26 @@ function TaskRemarkModal({ task, onClose, onSaved, saving, setSaving }) {
             value={form.remark_description}
             onChange={(e) => setForm((f) => ({ ...f, remark_description: e.target.value }))}
             placeholder="What was discussed about this task in the weekly meeting?"
-            className="mb-5 w-full resize-none rounded-xl border border-gray-200 px-4 py-3 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+            className="mb-4 w-full resize-none rounded-xl border border-gray-200 px-4 py-3 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
           />
+
+          <div className="mb-5 rounded-xl border border-dashed border-indigo-200 bg-indigo-50/40 p-4 dark:border-indigo-800 dark:bg-indigo-950/20">
+            <label className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300">
+              <Paperclip className="h-4 w-4 text-indigo-600" />
+              MOM document (optional)
+            </label>
+            <input
+              type="file"
+              accept={ACCEPT_MOM}
+              onChange={(e) => setMomFile(e.target.files?.[0] || null)}
+              className="block w-full text-sm text-gray-600 file:mr-3 file:rounded-lg file:border-0 file:bg-indigo-600 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-white hover:file:bg-indigo-500"
+            />
+            {momFile && (
+              <p className="mt-2 text-xs text-indigo-700 dark:text-indigo-300">
+                Selected: {momFile.name} ({(momFile.size / 1024).toFixed(0)} KB)
+              </p>
+            )}
+          </div>
 
           <AnimatePresence mode="wait">
             {mode === "pending" ? (
@@ -621,6 +644,18 @@ export default function TaskTable({ tasks, reload, departmentFilter, onDepartmen
                                         <p className="text-xs text-gray-500 dark:text-gray-400">
                                           Next review: {fmtDate(r.next_review_date)}
                                         </p>
+                                      )}
+                                      {r.attachment && (
+                                        <a
+                                          href={uploadUrl(r.attachment)}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          onClick={(e) => e.stopPropagation()}
+                                          className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400"
+                                        >
+                                          <FileText className="h-3 w-3" />
+                                          View MOM document
+                                        </a>
                                       )}
                                     </div>
                                   ))}

@@ -10,7 +10,9 @@ const userSchema = new mongoose.Schema(
       enum: ["Super Admin", "Admin", "PA Assistant"],
       default: "PA Assistant"
     },
-    coo_id: { type: String, required: true, index: true }
+    coo_id: { type: String, required: true, index: true },
+    email_notifications_enabled: { type: Boolean, default: true },
+    reminder_lead_hours: { type: Number, default: 24 }
   },
   { timestamps: true }
 );

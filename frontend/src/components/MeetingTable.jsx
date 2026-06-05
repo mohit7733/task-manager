@@ -12,9 +12,15 @@ import {
   AlertCircle,
   Clock,
   User,
+  Paperclip,
+  FileText,
+  Eye,
 } from "lucide-react";
 import api from "../api/client";
 import { fmtDate, isOverdue } from "../utils/format";
+import { ACCEPT_MOM, buildFormData, uploadUrl } from "../utils/upload";
+import { brand } from "../utils/theme";
+import { Link } from "react-router-dom";
 
 const EMPTY_FORM = {
   remark_description: "",
@@ -51,6 +57,7 @@ const COLUMNS = [
 function RemarkModal({ meeting, onClose, onSaved, saving, setSaving }) {
   const [mode, setMode] = useState("followup"); // followup | completed
   const [form, setForm] = useState(EMPTY_FORM);
+  const [momFile, setMomFile] = useState(null);
   const [error, setError] = useState("");
 
   const switchMode = (next) => {
@@ -105,11 +112,12 @@ function RemarkModal({ meeting, onClose, onSaved, saving, setSaving }) {
         if (form.next_followup_note.trim()) payload.next_followup_note = form.next_followup_note.trim();
       }
 
-      await api.post("/remarks", payload);
+      const fd = buildFormData(payload, momFile);
+      await api.post("/remarks", fd);
       onSaved();
       onClose();
-    } catch {
-      setError("Could not save remark. Please try again.");
+    } catch (err) {
+      setError(err.response?.data?.message || "Could not save remark. Please try again.");
     } finally {
       setSaving(false);
     }
@@ -132,7 +140,7 @@ function RemarkModal({ meeting, onClose, onSaved, saving, setSaving }) {
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="border-b border-gray-100 bg-gradient-to-r from-indigo-600 to-violet-600 px-6 py-5 text-white dark:border-gray-800">
+        <div className={`${brand.modalHeader}`}>
           <div className="flex items-start justify-between gap-4">
             <div>
               <p className="text-xs font-medium uppercase tracking-wider text-indigo-200">Add Remark</p>
@@ -170,11 +178,10 @@ function RemarkModal({ meeting, onClose, onSaved, saving, setSaving }) {
             <button
               type="button"
               onClick={() => switchMode("followup")}
-              className={`rounded-xl border-2 p-4 text-left transition-all ${
-                mode === "followup"
-                  ? "border-amber-400 bg-amber-50 ring-2 ring-amber-200 dark:bg-amber-950/40"
-                  : "border-gray-200 hover:border-gray-300 dark:border-gray-700"
-              }`}
+              className={`rounded-xl border-2 p-4 text-left transition-all ${mode === "followup"
+                ? "border-amber-400 bg-amber-50 ring-2 ring-amber-200 dark:bg-amber-950/40"
+                : "border-gray-200 hover:border-gray-300 dark:border-gray-700"
+                }`}
             >
               <CalendarClock
                 className={`mb-2 h-6 w-6 ${mode === "followup" ? "text-amber-600" : "text-gray-400"}`}
@@ -187,11 +194,10 @@ function RemarkModal({ meeting, onClose, onSaved, saving, setSaving }) {
             <button
               type="button"
               onClick={() => switchMode("completed")}
-              className={`rounded-xl border-2 p-4 text-left transition-all ${
-                mode === "completed"
-                  ? "border-emerald-400 bg-emerald-50 ring-2 ring-emerald-200 dark:bg-emerald-950/40"
-                  : "border-gray-200 hover:border-gray-300 dark:border-gray-700"
-              }`}
+              className={`rounded-xl border-2 p-4 text-left transition-all ${mode === "completed"
+                ? "border-emerald-400 bg-emerald-50 ring-2 ring-emerald-200 dark:bg-emerald-950/40"
+                : "border-gray-200 hover:border-gray-300 dark:border-gray-700"
+                }`}
             >
               <CheckCircle2
                 className={`mb-2 h-6 w-6 ${mode === "completed" ? "text-emerald-600" : "text-gray-400"}`}
@@ -212,8 +218,26 @@ function RemarkModal({ meeting, onClose, onSaved, saving, setSaving }) {
             value={form.remark_description}
             onChange={(e) => setForm((f) => ({ ...f, remark_description: e.target.value }))}
             placeholder="What was discussed? Key points from this meeting..."
-            className="mb-5 w-full resize-none rounded-xl border border-gray-200 px-4 py-3 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+            className="mb-4 w-full resize-none rounded-xl border border-gray-200 px-4 py-3 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
           />
+
+          <div className="mb-5 rounded-xl border border-dashed border-indigo-200 bg-indigo-50/40 p-4 dark:border-indigo-800 dark:bg-indigo-950/20">
+            <label className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300">
+              <Paperclip className="h-4 w-4 text-indigo-600" />
+              MOM document (optional)
+            </label>
+            <input
+              type="file"
+              accept={ACCEPT_MOM}
+              onChange={(e) => setMomFile(e.target.files?.[0] || null)}
+              className="block w-full text-sm text-gray-600 file:mr-3 file:rounded-lg file:border-0 file:bg-indigo-600 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-white hover:file:bg-indigo-500"
+            />
+            {momFile && (
+              <p className="mt-2 text-xs text-indigo-700 dark:text-indigo-300">
+                Selected: {momFile.name} ({(momFile.size / 1024).toFixed(0)} KB)
+              </p>
+            )}
+          </div>
 
           <AnimatePresence mode="wait">
             {mode === "followup" ? (
@@ -314,11 +338,10 @@ function RemarkModal({ meeting, onClose, onSaved, saving, setSaving }) {
             type="button"
             disabled={saving}
             onClick={submit}
-            className={`flex-1 rounded-xl py-2.5 text-sm font-semibold text-white shadow-md disabled:opacity-50 ${
-              mode === "completed"
-                ? "bg-emerald-600 hover:bg-emerald-500"
-                : "bg-indigo-600 hover:bg-indigo-500"
-            }`}
+            className={`flex-1 rounded-xl py-2.5 text-sm font-semibold text-white shadow-md disabled:opacity-50 ${mode === "completed"
+              ? "bg-emerald-600 hover:bg-emerald-500"
+              : "bg-indigo-600 hover:bg-indigo-500"
+              }`}
           >
             {saving ? "Saving…" : mode === "completed" ? "Save & Complete Meeting" : "Save & Schedule Followup"}
           </button>
@@ -481,16 +504,14 @@ export default function MeetingTable({ meetings, reload, highlightMeetingId }) {
 
                   return (
                     <Fragment key={m._id}>
-                    <tr
-                      id={`meeting-row-${m._id}`}
-                      onClick={() => toggleExpand(m._id)}
-                      className={`group transition-colors ${
-                        highlightMeetingId === m._id ? "ring-2 ring-inset ring-indigo-500" : ""
-                      } ${
-                          overdue
+                      <tr
+                        id={`meeting-row-${m._id}`}
+                        onClick={() => toggleExpand(m._id)}
+                        className={`group transition-colors ${highlightMeetingId === m._id ? "ring-2 ring-inset ring-indigo-500" : ""
+                          } ${overdue
                             ? "bg-red-50/70 hover:bg-red-50 dark:bg-red-950/25"
                             : "hover:bg-indigo-50/50 dark:hover:bg-indigo-950/20"
-                        } ${rowOpen ? "bg-indigo-50/80 dark:bg-indigo-950/30" : ""}`}
+                          } ${rowOpen ? "bg-indigo-50/80 dark:bg-indigo-950/30" : ""}`}
                       >
                         <td className="border-b border-r border-gray-100 px-2 py-2.5 text-center dark:border-gray-800">
                           <span className="inline-flex rounded-md bg-gray-100 p-0.5 group-hover:bg-indigo-100 dark:bg-gray-800">
@@ -522,11 +543,10 @@ export default function MeetingTable({ meetings, reload, highlightMeetingId }) {
                         </td>
                         <td className="border-b border-r border-gray-100 px-3 py-2.5 capitalize dark:border-gray-800">
                           <span
-                            className={`rounded-md px-2 py-0.5 text-xs font-medium ${
-                              m.meeting_type === "external"
-                                ? "bg-purple-100 text-purple-700"
-                                : "bg-indigo-100 text-indigo-700"
-                            }`}
+                            className={`rounded-md px-2 py-0.5 text-xs font-medium ${m.meeting_type === "external"
+                              ? "bg-purple-100 text-purple-700"
+                              : "bg-indigo-100 text-indigo-700"
+                              }`}
                           >
                             {m.meeting_type || "—"}
                           </span>
@@ -631,6 +651,9 @@ export default function MeetingTable({ meetings, reload, highlightMeetingId }) {
                                         <div>
                                           <p className="text-xs uppercase font-bold text-indigo-600 dark:text-indigo-300">Created</p>
                                           <p className="text-sm font-medium text-slate-800 dark:text-slate-200">{fmtDate(timeline.meeting.task_create_date)}</p>
+                                          <Link to={`${uploadUrl(timeline.meeting?.attachment)}`} target="_blank" className="inline-block rounded-full bg-indigo-600 text-white px-3 py-1 text-xs font-semibold dark:bg-indigo-400 mt-2 sm:mt-0">
+                                            <Eye className="h-3 w-3" />
+                                          </Link>
                                         </div>
                                         <span className="inline-block rounded-full bg-indigo-600 text-white px-3 py-1 text-xs font-semibold dark:bg-indigo-400 mt-2 sm:mt-0">
                                           {timeline.meeting.status}
@@ -657,6 +680,18 @@ export default function MeetingTable({ meetings, reload, highlightMeetingId }) {
                                                 <span className="text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-slate-700/30 px-2 py-0.5 rounded">
                                                   PA note: {r.next_followup_note}
                                                 </span>
+                                              )}
+                                              {r.attachment && (
+                                                <a
+                                                  href={uploadUrl(r.attachment)}
+                                                  target="_blank"
+                                                  rel="noopener noreferrer"
+                                                  onClick={(e) => e.stopPropagation()}
+                                                  className="inline-flex items-center gap-1 rounded bg-indigo-50 px-2 py-0.5 font-medium text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-900/40 dark:text-indigo-300"
+                                                >
+                                                  <FileText className="h-3 w-3" />
+                                                  MOM document
+                                                </a>
                                               )}
                                             </div>
                                           </div>
@@ -688,7 +723,7 @@ export default function MeetingTable({ meetings, reload, highlightMeetingId }) {
                                 </div>
                               </motion.div>
                             </td>
-                       
+
                           </tr>
                         )}
                       </AnimatePresence>

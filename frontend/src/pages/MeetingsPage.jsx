@@ -2,26 +2,38 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   Plus,
-  Search,
-  Filter,
   RefreshCw,
-  ChevronDown,
-  X,
-  AlertCircle,
   Calendar,
-  Clock,
-  Users,
-  Flag,
-  Save,
   FileText,
   User,
   Tag,
-  Repeat,
   Paperclip,
-  Star
+  Clock,
+  CheckCircle2,
+  AlertCircle,
 } from "lucide-react";
 import api from "../api/client";
 import MeetingTable from "../components/MeetingTable";
+import PageHeader from "../components/PageHeader";
+import FormModal, { FieldLabel, fieldClass, FormSection } from "../components/FormModal";
+import { buildFormData } from "../utils/upload";
+import { brand } from "../utils/theme";
+
+const EMPTY_FORM = {
+  title: "",
+  description: "",
+  meeting_type: "internal",
+  meeting_date: "",
+  meeting_time: "",
+  responsible_person: "",
+  responsible_email: "",
+  status: "Pending",
+  priority: "Medium",
+  discussion_topic: "",
+  final_outcome: "",
+  reminder_date: "",
+  recurrence: "None",
+};
 
 export default function MeetingsPage() {
   const [searchParams] = useSearchParams();
@@ -37,40 +49,23 @@ export default function MeetingsPage() {
     overdue: "",
     thisWeek: "",
   });
-  const [showFilters, setShowFilters] = useState(false);
   const [stats, setStats] = useState({ total: 0, pending: 0, completed: 0, inProgress: 0 });
-
-  // Modal states
   const [showModal, setShowModal] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [formData, setFormData] = useState({
-    title: "",
-    description: "",
-    meeting_type: "internal",
-    meeting_date: "",
-    meeting_time: "",
-    responsible_person: "",
-    status: "Pending",
-    priority: "Medium",
-    discussion_topic: "",
-    final_outcome: "",
-    reminder_date: "",
-    recurrence: "None",
-    attachment: ""
-  });
+  const [attachmentFile, setAttachmentFile] = useState(null);
+  const [formData, setFormData] = useState(EMPTY_FORM);
 
   const load = async () => {
     setLoading(true);
     try {
       const res = await api.get("/meetings", { params: { ...filters, limit: 25 } });
-      setMeetings(res.data.items);
-
       const items = res.data.items;
+      setMeetings(items);
       setStats({
         total: items.length,
-        pending: items.filter(m => m.status === "Pending").length,
-        completed: items.filter(m => m.status === "Completed").length,
-        inProgress: items.filter(m => m.status === "In Progress").length,
+        pending: items.filter((m) => m.status === "Pending").length,
+        completed: items.filter((m) => m.status === "Completed").length,
+        inProgress: items.filter((m) => m.status === "In Progress").length,
       });
     } catch (error) {
       console.error("Failed to load meetings:", error);
@@ -81,37 +76,21 @@ export default function MeetingsPage() {
 
   useEffect(() => {
     load();
-    // const timer = setInterval(load, 30000);
-    // return () => clearInterval(timer);
   }, [filters.status, filters.search, filters.priority, filters.meeting_type, filters.overdue, filters.thisWeek]);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  const resetForm = () => {
-    setFormData({
-      title: "",
-      description: "",
-      meeting_type: "internal",
-      meeting_date: "",
-      meeting_time: "",
-      responsible_person: "",
-      status: "Pending",
-      priority: "Medium",
-      discussion_topic: "",
-      final_outcome: "",
-      reminder_date: "",
-      recurrence: "None",
-      attachment: ""
-    });
+  const closeModal = () => {
+    setShowModal(false);
+    setFormData(EMPTY_FORM);
+    setAttachmentFile(null);
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-
-    // Validation
     if (!formData.title.trim()) {
       alert("Please enter a meeting title");
       return;
@@ -123,15 +102,15 @@ export default function MeetingsPage() {
 
     setSaving(true);
     try {
-      await api.post("/meetings", {
+      const payload = {
         ...formData,
-        task_create_date: new Date(),
-        meeting_date: new Date(formData.meeting_date),
-        reminder_date: formData.reminder_date ? new Date(formData.reminder_date) : undefined,
-      });
-
-      setShowModal(false);
-      resetForm();
+        task_create_date: new Date().toISOString(),
+        meeting_date: formData.meeting_date,
+        reminder_date: formData.reminder_date || "",
+      };
+      const fd = buildFormData(payload, attachmentFile);
+      await api.post("/meetings", fd);
+      closeModal();
       await load();
     } catch (error) {
       console.error("Failed to add meeting:", error);
@@ -141,39 +120,71 @@ export default function MeetingsPage() {
     }
   };
 
-  const clearFilters = () => {
-    setFilters({ status: "", search: "", priority: "" });
-    setShowFilters(false);
-  };
+  const statCards = [
+    { label: "Total", value: stats.total, color: "text-indigo-600", bg: "bg-indigo-50 dark:bg-indigo-950/40", icon: FileText },
+    { label: "Pending", value: stats.pending, color: "text-amber-600", bg: "bg-amber-50 dark:bg-amber-950/40", icon: Clock },
+    { label: "In progress", value: stats.inProgress, color: "text-blue-600", bg: "bg-blue-50 dark:bg-blue-950/40", icon: AlertCircle },
+    { label: "Completed", value: stats.completed, color: "text-emerald-600", bg: "bg-emerald-50 dark:bg-emerald-950/40", icon: CheckCircle2 },
+  ];
 
-  const hasActiveFilters = filters.status || filters.search || filters.priority;
+  const filterChips = [
+    { key: "overdue", value: "true", label: "Overdue" },
+    { key: "thisWeek", value: "true", label: "This Week" },
+    { key: "meeting_type", value: "internal", label: "Internal" },
+    { key: "meeting_type", value: "external", label: "External" },
+    { key: "status", value: "Pending", label: "Pending" },
+    { key: "status", value: "Completed", label: "Completed" },
+  ];
+
+  const hasActiveFilters =
+    filters.status || filters.search || filters.priority || filters.meeting_type || filters.overdue || filters.thisWeek;
 
   return (
     <div className="space-y-6">
-      {/* Header Section */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-800">Meetings & Tasks</h2>
-          <p className="text-sm text-gray-500 mt-1">Manage and track all your meetings and associated tasks</p>
-        </div>
+      <PageHeader
+        title="Meetings"
+        subtitle="Manage meetings, track follow-ups, and record remarks after each session."
+        icon={FileText}
+      >
         <button
+          type="button"
+          onClick={load}
+          className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium ${brand.btnSecondary}`}
+        >
+          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+          Refresh
+        </button>
+        <button
+          type="button"
           onClick={() => setShowModal(true)}
-          className="inline-flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl shadow-md hover:shadow-lg transition-all duration-200 font-medium text-sm"
+          className={`inline-flex items-center text-white gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold ${brand.gradient} ${brand.gradientHover} ${brand.btnRing}`}
         >
           <Plus className="h-4 w-4" />
           New Meeting
         </button>
+      </PageHeader>
+
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {statCards.map((s) => {
+          const Icon = s.icon;
+          return (
+            <div key={s.label} className={brand.statCard}>
+              <div className="flex items-center justify-between p-4">
+                <div>
+                  <p className="text-xs font-medium text-slate-500">{s.label}</p>
+                  <p className="mt-1 text-2xl font-bold text-slate-900 dark:text-white">{s.value}</p>
+                </div>
+                <div className={`rounded-xl p-2.5 ${s.bg} ${s.color}`}>
+                  <Icon className="h-5 w-5" />
+                </div>
+              </div>
+            </div>
+          );
+        })}
       </div>
 
-      <div className="flex flex-wrap gap-2 rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-900">
-        {[
-          { key: "overdue", value: "true", label: "Overdue" },
-          { key: "thisWeek", value: "true", label: "This Week" },
-          { key: "meeting_type", value: "internal", label: "Internal" },
-          { key: "meeting_type", value: "external", label: "External" },
-          { key: "status", value: "Pending", label: "Pending" },
-          { key: "status", value: "Completed", label: "Completed" },
-        ].map((chip) => {
+      <div className={`flex flex-wrap gap-2 rounded-xl border border-slate-200 p-3 dark:border-slate-700 ${brand.card}`}>
+        {filterChips.map((chip) => {
           const active = filters[chip.key] === chip.value;
           return (
             <button
@@ -185,7 +196,9 @@ export default function MeetingsPage() {
                   [chip.key]: active ? "" : chip.value,
                 }))
               }
-              className={`rounded-full px-3 py-1 text-xs font-medium ${active ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300"}`}
+              className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                active ? brand.chipActive : brand.chipInactive
+              }`}
             >
               {chip.label}
             </button>
@@ -193,319 +206,235 @@ export default function MeetingsPage() {
         })}
       </div>
 
-      {/* Meetings Table */}
-      {loading ? (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100">
-          <div className="p-8 text-center">
-            <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-gray-200 border-t-blue-600"></div>
-            <p className="mt-3 text-gray-500 text-sm">Loading meetings...</p>
-          </div>
+      {loading && meetings.length === 0 ? (
+        <div className={`flex h-48 flex-col items-center justify-center ${brand.card}`}>
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-slate-200 border-t-indigo-600" />
+          <p className="mt-3 text-sm text-slate-500">Loading meetings…</p>
         </div>
       ) : meetings.length === 0 ? (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100">
-          <div className="p-12 text-center">
-            <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-4">
-              <Calendar className="h-8 w-8 text-gray-400" />
-            </div>
-            <h3 className="text-lg font-semibold text-gray-800 mb-1">No meetings found</h3>
-            <p className="text-gray-500 text-sm mb-4">
-              {hasActiveFilters ? "Try adjusting your filters" : "Get started by creating your first meeting"}
-            </p>
-            {!hasActiveFilters && (
-              <button
-                onClick={() => setShowModal(true)}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
-              >
-                <Plus className="h-4 w-4" />
-                Create Meeting
-              </button>
-            )}
+        <div className={`p-12 text-center ${brand.card}`}>
+          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800">
+            <Calendar className="h-8 w-8 text-slate-400" />
           </div>
+          <h3 className="text-lg font-semibold text-slate-800 dark:text-white">No meetings found</h3>
+          <p className="mt-1 text-sm text-slate-500">
+            {hasActiveFilters ? "Try adjusting your filters" : "Get started by creating your first meeting"}
+          </p>
+          {!hasActiveFilters && (
+            <button
+              type="button"
+              onClick={() => setShowModal(true)}
+              className={`mt-4 inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold ${brand.gradient} ${brand.gradientHover}`}
+            >
+              <Plus className="h-4 w-4" />
+              Create Meeting
+            </button>
+          )}
         </div>
       ) : (
         <MeetingTable meetings={meetings} reload={load} highlightMeetingId={highlightMeetingId} />
       )}
 
-      {/* Add Meeting Modal */}
-      {showModal && (
-        <div className="fixed inset-0 z-50 overflow-y-auto">
-          <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
-            {/* Background overlay */}
-            <div className="fixed inset-0 transition-opacity bg-black/60" onClick={() => setShowModal(false)}></div>
-
-            {/* Modal panel */}
-            <div className="inline-block align-bottom bg-white rounded-2xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-4xl sm:w-full" style={{
-              position: "relative",
-              zIndex: 1000
-            }}>
-              <form onSubmit={handleSubmit}>
-                {/* Modal Header */}
-                <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-4">
-                  <h3 className="text-lg font-semibold text-white">Create New Meeting</h3>
-                  <p className="text-blue-100 text-sm mt-1">Fill in the details to schedule a new meeting</p>
-                </div>
-
-                {/* Modal Body */}
-                <div className="bg-white px-6 py-6">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    {/* Basic Information */}
-                    <div className="space-y-4">
-                      <h4 className="text-sm font-semibold text-gray-900 flex items-center gap-2 pb-2 border-b border-gray-200">
-                        <FileText className="h-4 w-4 text-blue-600" />
-                        Basic Information
-                      </h4>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                          Title *
-                        </label>
-                        <input
-                          type="text"
-                          name="title"
-                          value={formData.title}
-                          onChange={handleInputChange}
-                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                          placeholder="Enter meeting title"
-                          required
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                          Description
-                        </label>
-                        <textarea
-                          name="description"
-                          value={formData.description}
-                          onChange={handleInputChange}
-                          rows={3}
-                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                          placeholder="Enter meeting description"
-                        />
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                            Meeting Type
-                          </label>
-                          <select
-                            name="meeting_type"
-                            value={formData.meeting_type}
-                            onChange={handleInputChange}
-                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          >
-                            <option value="internal">Internal</option>
-                            <option value="external">External</option>
-                          </select>
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                            Priority
-                          </label>
-                          <select
-                            name="priority"
-                            value={formData.priority}
-                            onChange={handleInputChange}
-                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          >
-                            <option value="Low">Low</option>
-                            <option value="Medium">Medium</option>
-                            <option value="High">High</option>
-                            <option value="Critical">Critical</option>
-                          </select>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Schedule Information */}
-                    <div className="space-y-4">
-                      <h4 className="text-sm font-semibold text-gray-900 flex items-center gap-2 pb-2 border-b border-gray-200">
-                        <Calendar className="h-4 w-4 text-blue-600" />
-                        Schedule
-                      </h4>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                          Meeting Date *
-                        </label>
-                        <input
-                          type="date"
-                          name="meeting_date"
-                          value={formData.meeting_date}
-                          onChange={handleInputChange}
-                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          required
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                          Meeting Time
-                        </label>
-                        <input
-                          type="time"
-                          name="meeting_time"
-                          value={formData.meeting_time}
-                          onChange={handleInputChange}
-                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                          Reminder Date
-                        </label>
-                        <input
-                          type="date"
-                          name="reminder_date"
-                          value={formData.reminder_date}
-                          onChange={handleInputChange}
-                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                      </div>
-
-                      {/* <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                          Recurrence
-                        </label>
-                        <select
-                          name="recurrence"
-                          value={formData.recurrence}
-                          onChange={handleInputChange}
-                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        >
-                          <option value="None">None</option>
-                          <option value="Daily">Daily</option>
-                          <option value="Weekly">Weekly</option>
-                          <option value="Monthly">Monthly</option>
-                        </select>
-                      </div> */}
-                    </div>
-
-                    {/* Assignment & Status */}
-                    <div className="space-y-4">
-                      <h4 className="text-sm font-semibold text-gray-900 flex items-center gap-2 pb-2 border-b border-gray-200">
-                        <Users className="h-4 w-4 text-blue-600" />
-                        Assignment & Status
-                      </h4>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                          Responsible Person
-                        </label>
-                        <input
-                          type="text"
-                          name="responsible_person"
-                          value={formData.responsible_person}
-                          onChange={handleInputChange}
-                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          placeholder="Enter name"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                          Status
-                        </label>
-                        <select
-                          name="status"
-                          value={formData.status}
-                          onChange={handleInputChange}
-                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        >
-                          <option value="Pending">Pending</option>
-                          <option value="In Progress">In Progress</option>
-                          <option value="Completed">Completed</option>
-                          <option value="Rescheduled">Rescheduled</option>
-                        </select>
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                          Discussion Topic
-                        </label>
-                        <input
-                          type="text"
-                          name="discussion_topic"
-                          value={formData.discussion_topic}
-                          onChange={handleInputChange}
-                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          placeholder="Enter discussion topic"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Additional Details */}
-                    {/* <div className="space-y-4">
-                      <h4 className="text-sm font-semibold text-gray-900 flex items-center gap-2 pb-2 border-b border-gray-200">
-                        <Tag className="h-4 w-4 text-blue-600" />
-                        Additional Details
-                      </h4>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                          Final Outcome
-                        </label>
-                        <input
-                          type="text"
-                          name="final_outcome"
-                          value={formData.final_outcome}
-                          onChange={handleInputChange}
-                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          placeholder="Expected outcome"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                          Attachment URL
-                        </label>
-                        <input
-                          type="text"
-                          name="attachment"
-                          value={formData.attachment}
-                          onChange={handleInputChange}
-                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          placeholder="Link to document"
-                        />
-                      </div>
-                    </div> */}
-                  </div>
-                </div>
-
-                {/* Modal Footer */}
-                <div className="bg-gray-50 px-6 py-4 flex flex-col sm:flex-row gap-3 justify-end">
-                  <button
-                    type="button"
-                    onClick={() => setShowModal(false)}
-                    className="inline-flex justify-center items-center gap-2 px-4 py-2 rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 transition-colors text-sm font-medium"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={saving}
-                    className="inline-flex justify-center items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white transition-all duration-200 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {saving ? (
-                      <>
-                        <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
-                        Creating...
-                      </>
-                    ) : (
-                      <>
-                        <Save className="h-4 w-4" />
-                        Create Meeting
-                      </>
-                    )}
-                  </button>
-                </div>
-              </form>
+      <FormModal
+        open={showModal}
+        onClose={closeModal}
+        eyebrow="New Meeting"
+        title="Schedule a meeting"
+        subtitle="Fill in the details below. Assignee will receive an email if provided."
+        maxWidth="max-w-3xl"
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={closeModal}
+              className={`flex-1 rounded-xl py-2.5 text-sm font-medium ${brand.btnSecondary}`}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              form="create-meeting-form"
+              disabled={saving}
+              className={`flex-1 rounded-xl py-2.5 text-sm font-semibold disabled:opacity-50 ${brand.gradient} ${brand.gradientHover}`}
+            >
+              {saving ? "Creating…" : "Create Meeting"}
+            </button>
+          </>
+        }
+      >
+        <form id="create-meeting-form" onSubmit={handleSubmit} className="space-y-5">
+          <FormSection title="Basic Information" icon={FileText}>
+            <div>
+              <FieldLabel required>Title</FieldLabel>
+              <input
+                type="text"
+                name="title"
+                value={formData.title}
+                onChange={handleInputChange}
+                className={fieldClass}
+                placeholder="Enter meeting title"
+                required
+              />
             </div>
-          </div>
-        </div>
-      )}
+            <div>
+              <FieldLabel>Description</FieldLabel>
+              <textarea
+                name="description"
+                value={formData.description}
+                onChange={handleInputChange}
+                rows={3}
+                className={`${fieldClass} resize-none`}
+                placeholder="What is this meeting about?"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <FieldLabel>Meeting type</FieldLabel>
+                <select name="meeting_type" value={formData.meeting_type} onChange={handleInputChange} className={fieldClass}>
+                  <option value="internal">Internal</option>
+                  <option value="external">External</option>
+                </select>
+              </div>
+              <div>
+                <FieldLabel>Priority</FieldLabel>
+                <select name="priority" value={formData.priority} onChange={handleInputChange} className={fieldClass}>
+                  <option value="Low">Low</option>
+                  <option value="Medium">Medium</option>
+                  <option value="High">High</option>
+                  <option value="Critical">Critical</option>
+                </select>
+              </div>
+            </div>
+          </FormSection>
+
+          <FormSection title="Schedule" icon={Calendar}>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <FieldLabel required>Meeting date</FieldLabel>
+                <input
+                  type="date"
+                  name="meeting_date"
+                  value={formData.meeting_date}
+                  onChange={handleInputChange}
+                  className={fieldClass}
+                  required
+                />
+              </div>
+              <div>
+                <FieldLabel>Meeting time</FieldLabel>
+                <input
+                  type="time"
+                  name="meeting_time"
+                  value={formData.meeting_time}
+                  onChange={handleInputChange}
+                  className={fieldClass}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <FieldLabel>Reminder date</FieldLabel>
+                <input
+                  type="date"
+                  name="reminder_date"
+                  value={formData.reminder_date}
+                  onChange={handleInputChange}
+                  className={fieldClass}
+                />
+              </div>
+              <div>
+                <FieldLabel>Recurrence</FieldLabel>
+                <select name="recurrence" value={formData.recurrence} onChange={handleInputChange} className={fieldClass}>
+                  <option value="None">None</option>
+                  <option value="Daily">Daily</option>
+                  <option value="Weekly">Weekly</option>
+                  <option value="Monthly">Monthly</option>
+                </select>
+              </div>
+            </div>
+          </FormSection>
+
+          <FormSection title="Assignment & Status" icon={User}>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <FieldLabel>Responsible person</FieldLabel>
+                <input
+                  type="text"
+                  name="responsible_person"
+                  value={formData.responsible_person}
+                  onChange={handleInputChange}
+                  className={fieldClass}
+                  placeholder="Name"
+                />
+              </div>
+              <div>
+                <FieldLabel>Responsible email</FieldLabel>
+                <input
+                  type="email"
+                  name="responsible_email"
+                  value={formData.responsible_email}
+                  onChange={handleInputChange}
+                  className={fieldClass}
+                  placeholder="email@company.com"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <FieldLabel>Status</FieldLabel>
+                <select name="status" value={formData.status} onChange={handleInputChange} className={fieldClass}>
+                  <option value="Pending">Pending</option>
+                  <option value="In Progress">In Progress</option>
+                  <option value="Completed">Completed</option>
+                  <option value="Rescheduled">Rescheduled</option>
+                </select>
+              </div>
+              <div>
+                <FieldLabel>Discussion topic</FieldLabel>
+                <input
+                  type="text"
+                  name="discussion_topic"
+                  value={formData.discussion_topic}
+                  onChange={handleInputChange}
+                  className={fieldClass}
+                  placeholder="Main agenda"
+                />
+              </div>
+            </div>
+          </FormSection>
+
+          <FormSection title="Additional Details" icon={Tag}>
+            <div>
+              <FieldLabel>Expected outcome</FieldLabel>
+              <input
+                type="text"
+                name="final_outcome"
+                value={formData.final_outcome}
+                onChange={handleInputChange}
+                className={fieldClass}
+                placeholder="Optional expected result"
+              />
+            </div>
+            <div className="rounded-xl border border-dashed border-indigo-300 bg-white/60 p-3 dark:border-indigo-700 dark:bg-slate-900/40">
+              <FieldLabel>
+                <Paperclip className="mr-1 inline h-4 w-4" />
+                Attachment (optional)
+              </FieldLabel>
+              <input
+                type="file"
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.png,.jpg,.jpeg"
+                onChange={(e) => setAttachmentFile(e.target.files?.[0] || null)}
+                className="mt-1 block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-indigo-600 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-white hover:file:bg-indigo-500"
+              />
+              {attachmentFile && (
+                <p className="mt-2 text-xs text-indigo-700 dark:text-indigo-300">
+                  Selected: {attachmentFile.name} ({(attachmentFile.size / 1024).toFixed(0)} KB)
+                </p>
+              )}
+            </div>
+          </FormSection>
+        </form>
+      </FormModal>
     </div>
   );
 }

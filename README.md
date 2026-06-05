@@ -1,13 +1,19 @@
-# COO PA Manager
+# ExecuFlow
 
-Smart executive PA workflow system — replaces Excel meeting sheets with one followup chain per meeting/task.
+**Executive Meeting & Task Intelligence** — a professional PA workflow platform that replaces Excel meeting sheets with structured follow-up chains, department tasks, calendars, and email notifications.
+
+## Brand & Design
+
+- **Primary:** Indigo `#4F46E5` · **Accent:** Blue `#2563EB`
+- **Neutrals:** Slate palette · **Semantic:** Emerald (done), Amber (pending), Red (overdue)
+- Unified UI via `frontend/src/utils/theme.js`
 
 ## Stack
 
-- **Frontend:** React (Vite), Tailwind CSS, MUI icons, Redux Toolkit, Axios, React Router, Framer Motion, FullCalendar, date-fns
-- **Backend:** Node.js, Express, MongoDB/Mongoose, JWT, node-cron, Helmet, CORS, rate limiting
+- **Frontend:** React (Vite), Tailwind CSS, Lucide icons, Redux Toolkit, Axios, React Router, Framer Motion, FullCalendar
+- **Backend:** Node.js, Express, MongoDB/Mongoose, JWT, nodemailer, node-cron
 
-## Quick start
+## Quick start (local)
 
 ### 1. MongoDB
 
@@ -44,38 +50,45 @@ App: `http://localhost:5173`
 | admin@coo.com | pa123456 | Admin |
 | super@coo.com | pa123456 | Super Admin |
 
+## Production build
+
+```bash
+# Backend
+cd backend && npm start
+
+# Frontend
+cd frontend && npm run build
+# Serve frontend/dist/ via nginx, IIS, or static host
+# Set VITE_API_URL to your live API URL before building
+```
+
 ## Core workflow
 
-1. PA creates a **Meeting/Task** (task date, meeting date, type, title, responsible person, discussion topic).
-2. After the meeting, add **Remark 1** with next meeting date / followup notes if not resolved.
-3. Repeat remarks until **final outcome** → status **Completed**.
-4. Expand any row in **Meetings & Tasks** to see the timeline (created → remarks → completed).
+1. Create a **Meeting** or **Department Task** with assignee email.
+2. After each session, add a **Remark** with optional MOM document upload.
+3. Track timeline, calendar, and follow-ups until completed.
+4. Receive in-app and email reminders for upcoming/overdue items.
 
 ## Main screens
 
 | Screen | Purpose |
 |--------|---------|
-| Dashboard | Pending, today, overdue, recent remarks |
-| Meetings | Excel-style table, inline status, quick remark row |
-| Dept. Tasks | Multi-department task list, weekly meeting remarks, done/pending |
-| Calendar | **Meeting calendar** and **Dept. task calendar** — separate views & data |
-| Followups | Excel table of remark chains |
+| Dashboard | Meetings & tasks overview, recent remarks |
+| Meetings | Excel-style table, remarks, MOM upload |
+| Dept. Tasks | Multi-department tasks, weekly remarks |
+| Calendar | Meeting + task calendars |
+| Followups | Remark chain table |
 | Reports | Charts + Excel/PDF export |
-| Settings | Dark/light mode, quick notes |
+| Settings | Theme, email prefs, quick notes |
 
-## API (protected with JWT)
+## Email notifications
 
-- `POST /api/auth/login` · `GET /api/auth/me`
+Configure SMTP in `backend/.env`. Emails sent for assignments, MOM updates, and reminders. Toggle in **Settings**.
+
+## API
+
+- `POST /api/auth/login` · `GET /api/auth/me` · `PUT /api/auth/settings`
 - `GET/POST/PUT/DELETE /api/meetings` · `GET /api/meetings/:id/timeline`
-- `POST /api/remarks` · `GET /api/remarks/meeting/:meetingId`
-- `GET/POST/PUT/DELETE /api/tasks` · `GET /api/tasks/calendar-events` · `GET /api/tasks/:id/timeline` · `POST /api/tasks/remarks`
-- `GET /api/notifications` · `PATCH /api/notifications/:id/read`
-- `GET /api/dashboard`
-
-## Collections
-
-`Users`, `Meetings`, `Remarks`, `Tasks`, `TaskRemarks`, `Notifications` — scoped by `coo_id` for multiple COOs.
-
-## Reminders
-
-Cron runs every 10 minutes; creates upcoming/overdue notifications. Frontend polls every 60s and can show browser alerts.
+- `POST /api/remarks` (multipart — MOM upload)
+- `GET/POST/PUT/DELETE /api/tasks` · `POST /api/tasks/remarks` (multipart)
+- `GET /api/notifications` · `GET /api/dashboard`

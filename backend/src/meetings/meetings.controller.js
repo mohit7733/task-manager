@@ -1,6 +1,7 @@
 const { addDays, isBefore, startOfDay } = require("date-fns");
 const Meeting = require("./meeting.model");
 const Remark = require("../remarks/remark.model");
+const { sendMeetingAssignedEmail, sendEmail } = require("../shared/emailService");
 
 function buildFilter(query, user) {
   const filter = { coo_id: user.coo_id };
@@ -105,9 +106,24 @@ async function createMeeting(req, res) {
     task_create_date: body.task_create_date || new Date(),
     initial_meeting_date: body.initial_meeting_date || meetingDate,
     meeting_date: meetingDate,
-    attachment: req.file ? `/uploads/${req.file.filename}` : body.attachment
+    attachment: req.file ? `/uploads/${req.file.filename}` : body.attachment,
+    responsible_email: body.responsible_email?.trim() || undefined
   });
+  sendMeetingAssignedEmail(meeting, req.user).catch(() => { });
   res.status(201).json(meeting);
+}
+
+async function sendMeetingAssignedEmailtesting() {
+  await sendEmail({
+    to: "mohitbeniwal@aimantra.co",
+    subject: "New Meeting Assigned",
+    html: `<p>Hello ,</p>
+    <p>You have been assigned a new meeting:</p>
+    <p>Title: </p>
+    <p>Date: </p>
+    <p>Time: </p>
+  `
+  });
 }
 
 function sameCalendarSlot(a, b, timeA, timeB) {
@@ -262,6 +278,7 @@ async function removeMeeting(req, res) {
 module.exports = {
   listMeetings,
   createMeeting,
+  sendMeetingAssignedEmailtesting,
   updateMeeting,
   getMeetingTimeline,
   getCalendarEvents,

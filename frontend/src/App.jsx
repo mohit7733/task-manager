@@ -33,26 +33,25 @@ function AppShell() {
   }, [user, dispatch]);
 
   return (
-    <div className="flex min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-gray-950 dark:to-slate-900">
+    <div className="flex min-h-screen bg-gradient-to-br from-slate-50 to-indigo-50/30 dark:from-slate-950 dark:to-indigo-950/20">
       <Sidebar />
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-20 flex items-center justify-between border-b border-gray-200 bg-white/80 px-6 py-3 backdrop-blur-md dark:border-gray-800 dark:bg-gray-900/80">
-          <div>
-            <h1 className="text-lg font-bold text-gray-900 dark:text-white">Manager</h1>
-            <p className="text-xs text-gray-500">Smart Meeting & Followup Tracker</p>
-          </div>
+        <header className="sticky top-0 z-20 flex items-center justify-between border-b border-slate-200/80 bg-white/80 px-6 py-3 backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/80">
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            Welcome{user?.name ? `, ${user.name}` : ""}
+          </p>
           <div className="flex items-center gap-3">
             <button
               type="button"
               onClick={() => dispatch(toggleTheme())}
-              className="rounded-lg border px-3 py-1.5 text-xs dark:border-gray-600"
+              className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 dark:border-slate-600 dark:text-slate-300"
             >
               {dark ? "Light" : "Dark"}
             </button>
             <NotificationDrawer />
             {user && (
-              <span className="hidden text-sm text-gray-600 dark:text-gray-300 sm:inline">
-                {user.name} · {user.role}
+              <span className="hidden rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300 sm:inline">
+                {user.role}
               </span>
             )}
           </div>

@@ -1,6 +1,7 @@
 const { addDays, isBefore, startOfDay } = require("date-fns");
 const Task = require("./task.model");
 const TaskRemark = require("./taskRemark.model");
+const { sendTaskAssignedEmail, sendTaskRemarkEmail } = require("../shared/emailService");
 
 function buildFilter(query, user) {
   const filter = { coo_id: user.coo_id };
@@ -112,10 +113,12 @@ async function createTask(req, res) {
     ...body,
     title: body.title.trim(),
     assigned_to: body.assigned_to.trim(),
+    assigned_email: body.assigned_email?.trim() || undefined,
     created_by: req.user._id,
     coo_id: body.coo_id || req.user.coo_id,
     task_create_date: body.task_create_date || new Date()
   });
+  sendTaskAssignedEmail(task, req.user).catch(() => {});
   res.status(201).json(task);
 }
 
@@ -147,7 +150,7 @@ async function addTaskRemark(req, res) {
   const task = await Task.findOne({ _id: req.body.task_id, coo_id: req.user.coo_id });
   if (!task) return res.status(404).json({ message: "Task not found" });
 
-  const isCompleted = Boolean(req.body.mark_completed);
+  const isCompleted = req.body.mark_completed === true || req.body.mark_completed === "true";
   if (!req.body.remark_description?.trim()) {
     return res.status(400).json({ message: "Meeting discussion / remark is required" });
   }
@@ -168,6 +171,7 @@ async function addTaskRemark(req, res) {
     remark_date: req.body.remark_date || new Date(),
     meeting_date: req.body.meeting_date || req.body.remark_date || new Date(),
     remark_description: req.body.remark_description.trim(),
+    attachment: req.file ? `/uploads/${req.file.filename}` : undefined,
     created_by: req.user._id
   };
 
@@ -188,6 +192,7 @@ async function addTaskRemark(req, res) {
 
   const remark = await TaskRemark.create(remarkData);
   await task.save();
+  sendTaskRemarkEmail(task, remark, req.user).catch(() => {});
   res.status(201).json(remark);
 }
 

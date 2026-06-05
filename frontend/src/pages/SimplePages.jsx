@@ -3,7 +3,9 @@ import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { useDispatch, useSelector } from "react-redux";
-import { addQuickNote, toggleTheme } from "../store/store";
+import { addQuickNote, updateQuickNote, removeQuickNote, toggleTheme } from "../store/store";
+import PageHeader from "../components/PageHeader";
+import { APP_NAME, APP_TAGLINE, APP_VERSION, brand } from "../utils/theme";
 import api from "../api/client";
 import {
   FileSpreadsheet,
@@ -285,7 +287,7 @@ export function ReportsPage() {
 
       doc.setFontSize(20);
       doc.setTextColor(99, 102, 241);
-      doc.text(" PA Manager - Meeting Report", 14, 20);
+      doc.text(`${APP_NAME} — Meeting Report`, 14, 20);
 
       doc.setFontSize(12);
       doc.setTextColor(100, 116, 139);
@@ -371,26 +373,26 @@ export function ReportsPage() {
         <div className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm">
           <p className="text-xs text-gray-500">Total Meetings</p>
           <p className="text-2xl font-bold text-gray-800">{meetings.length}</p>
-          <p className="text-xs text-emerald-600 mt-1">+12% vs last month</p>
+          <p className="text-xs text-slate-400 mt-1">All recorded meetings</p>
         </div>
-        <div className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm">
-          <p className="text-xs text-gray-500">Completion Rate</p>
+        <div className={`${brand.statCard} p-4`}>
+          <p className="text-xs text-slate-500">Completion Rate</p>
           <p className="text-2xl font-bold text-emerald-600">
             {((meetings.filter(m => m.status === "Completed").length / meetings.length) * 100 || 0).toFixed(0)}%
           </p>
-          <div className="w-full bg-gray-200 rounded-full h-1.5 mt-2">
-            <div className="bg-emerald-600 h-1.5 rounded-full" style={{ width: `${((meetings.filter(m => m.status === "Completed").length / meetings.length) * 100 || 0)}%` }}></div>
+          <div className="mt-2 h-1.5 w-full rounded-full bg-slate-200">
+            <div className="h-1.5 rounded-full bg-emerald-600" style={{ width: `${((meetings.filter(m => m.status === "Completed").length / meetings.length) * 100 || 0)}%` }} />
           </div>
         </div>
-        <div className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm">
-          <p className="text-xs text-gray-500">High Priority</p>
+        <div className={`${brand.statCard} p-4`}>
+          <p className="text-xs text-slate-500">High Priority</p>
           <p className="text-2xl font-bold text-red-600">{meetings.filter(m => m.priority === "High" || m.priority === "Critical").length}</p>
-          <p className="text-xs text-red-600 mt-1">Requires attention</p>
+          <p className="mt-1 text-xs text-red-600">Requires attention</p>
         </div>
-        <div className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm">
-          <p className="text-xs text-gray-500">Avg Response Time</p>
-          <p className="text-2xl font-bold text-blue-600">2.4d</p>
-          <p className="text-xs text-blue-600 mt-1">-0.5d improvement</p>
+        <div className={`${brand.statCard} p-4`}>
+          <p className="text-xs text-slate-500">Pending</p>
+          <p className="text-2xl font-bold text-amber-600">{meetings.filter(m => m.status === "Pending").length}</p>
+          <p className="mt-1 text-xs text-slate-400">Awaiting follow-up</p>
         </div>
       </div>
 
@@ -492,24 +494,58 @@ export function ReportsPage() {
   );
 }
 
+const REMINDER_OPTIONS = [
+  { label: "15 minutes before", value: 0.25 },
+  { label: "30 minutes before", value: 0.5 },
+  { label: "1 hour before", value: 1 },
+  { label: "1 day before", value: 24 },
+];
+
 export function SettingsPage() {
   const [note, setNote] = useState("");
   const [editingIndex, setEditingIndex] = useState(null);
   const [editingNote, setEditingNote] = useState("");
+  const [emailEnabled, setEmailEnabled] = useState(true);
+  const [reminderHours, setReminderHours] = useState(24);
+  const [savingSettings, setSavingSettings] = useState(false);
   const notes = useSelector((s) => s.ui.quickNotes);
   const darkMode = useSelector((s) => s.ui.darkMode);
   const dispatch = useDispatch();
 
+  useEffect(() => {
+    api
+      .get("/auth/me")
+      .then((res) => {
+        setEmailEnabled(res.data.email_notifications_enabled !== false);
+        setReminderHours(res.data.reminder_lead_hours ?? 24);
+      })
+      .catch(() => {});
+  }, []);
+
+  const saveEmailSettings = async (nextEnabled, nextHours) => {
+    setSavingSettings(true);
+    try {
+      await api.put("/auth/settings", {
+        email_notifications_enabled: nextEnabled,
+        reminder_lead_hours: nextHours,
+      });
+    } catch {
+      /* ignore */
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
   const addNote = () => {
     if (note.trim()) {
-      dispatch(addQuickNote(note));
+      dispatch(addQuickNote(note.trim()));
       setNote("");
     }
   };
 
-  // const deleteNote = (index) => {
-  //   dispatch(removeQuickNote(index));
-  // };
+  const deleteNote = (index) => {
+    dispatch(removeQuickNote(index));
+  };
 
   const startEdit = (index, currentNote) => {
     setEditingIndex(index);
@@ -517,10 +553,8 @@ export function SettingsPage() {
   };
 
   const saveEdit = () => {
-    if (editingNote.trim()) {
-      // Update note logic here
-      // dispatch(removeQuickNote(editingIndex));
-      dispatch(addQuickNote(editingNote));
+    if (editingNote.trim() && editingIndex !== null) {
+      dispatch(updateQuickNote({ index: editingIndex, text: editingNote.trim() }));
       setEditingIndex(null);
       setEditingNote("");
     }
@@ -617,13 +651,13 @@ export function SettingsPage() {
                             >
                               <Edit2 className="h-4 w-4 text-gray-500" />
                             </button>
-                            {/* <button
+                            <button
                               onClick={() => deleteNote(i)}
                               className="p-1.5 hover:bg-red-100 rounded-lg transition-colors"
                               title="Delete"
                             >
                               <Trash2 className="h-4 w-4 text-red-500" />
-                            </button> */}
+                            </button>
                           </div>
                         </div>
                       )}
@@ -663,21 +697,52 @@ export function SettingsPage() {
                 </button>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Email Notifications</label>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">Receive email updates</span>
-                  <button className="relative inline-flex h-6 w-11 items-center rounded-full bg-blue-600 transition-colors">
-                    <span className="inline-block h-4 w-4 translate-x-6 rounded-full bg-white transition-transform"></span>
+                <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">
+                  <Mail className="inline h-4 w-4 mr-1" />
+                  Email Notifications
+                </label>
+                <div className="flex items-center justify-between rounded-lg border border-gray-100 px-3 py-2 dark:border-gray-700">
+                  <span className="text-sm text-gray-600 dark:text-gray-400">Reminders, assignments & MOM updates</span>
+                  <button
+                    type="button"
+                    disabled={savingSettings}
+                    onClick={() => {
+                      const next = !emailEnabled;
+                      setEmailEnabled(next);
+                      saveEmailSettings(next, reminderHours);
+                    }}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                      emailEnabled ? "bg-blue-600" : "bg-gray-300"
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 rounded-full bg-white transition-transform ${
+                        emailEnabled ? "translate-x-6" : "translate-x-1"
+                      }`}
+                    />
                   </button>
                 </div>
+                <p className="mt-1 text-xs text-gray-400">
+                  Configure SMTP in backend .env to send real emails
+                </p>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Reminder Settings</label>
-                <select className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                  <option>15 minutes before</option>
-                  <option>30 minutes before</option>
-                  <option>1 hour before</option>
-                  <option>1 day before</option>
+                <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">Reminder lead time</label>
+                <select
+                  value={reminderHours}
+                  disabled={savingSettings}
+                  onChange={(e) => {
+                    const hours = Number(e.target.value);
+                    setReminderHours(hours);
+                    saveEmailSettings(emailEnabled, hours);
+                  }}
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800"
+                >
+                  {REMINDER_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
                 </select>
               </div>
             </div>
@@ -686,10 +751,10 @@ export function SettingsPage() {
           {/* About Card */}
           <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-6">
             <h3 className="text-lg font-semibold text-gray-800 mb-2">About</h3>
-            <p className="text-sm text-gray-600 mb-3"> PA Manager v2.0</p>
-            <p className="text-xs text-gray-500">Smart Meeting & Followup Tracker for Executive Assistants</p>
-            <div className="mt-4 pt-4 border-t border-blue-100">
-              <p className="text-xs text-gray-500">© {new Date().getFullYear()}  PA Manager. All rights reserved.</p>
+            <p className="text-sm text-slate-600 mb-3">{APP_NAME} v{APP_VERSION}</p>
+            <p className="text-xs text-slate-500">{APP_TAGLINE}</p>
+            <div className="mt-4 pt-4 border-t border-indigo-100">
+              <p className="text-xs text-slate-500">© {new Date().getFullYear()} {APP_NAME}. All rights reserved.</p>
             </div>
           </div>
         </div>

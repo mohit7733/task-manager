@@ -11,12 +11,13 @@ const {
   getTaskCalendarEvents
 } = require("./tasks.controller");
 const { protect } = require("../shared/middleware/authMiddleware");
+const upload = require("../shared/upload");
 
 router.use(protect);
 router.get("/", listTasks);
 router.get("/stats", getTaskStats);
 router.get("/calendar-events", getTaskCalendarEvents);
-router.post("/remarks", addTaskRemark);
+router.post("/remarks", upload.single("attachment"), addTaskRemark);
 router.get("/remarks/:taskId", getRemarksByTask);
 router.post("/", createTask);
 router.put("/:id", updateTask);

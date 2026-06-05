@@ -1,5 +1,6 @@
 const Remark = require("./remark.model");
 const Meeting = require("../meetings/meeting.model");
+const { sendMeetingRemarkEmail } = require("../shared/emailService");
 
 async function addRemark(req, res) {
   const meeting = await Meeting.findOne({ _id: req.body.meeting_id, coo_id: req.user.coo_id });
@@ -55,6 +56,7 @@ async function addRemark(req, res) {
 
   const remark = await Remark.create(remarkData);
   await meeting.save();
+  sendMeetingRemarkEmail(meeting, remark, req.user).catch(() => {});
   res.status(201).json(remark);
 }
 

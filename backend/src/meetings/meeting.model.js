@@ -10,6 +10,7 @@ const meetingSchema = new mongoose.Schema(
     title: { type: String, required: true },
     description: String,
     responsible_person: String,
+    responsible_email: String,
     status: { type: String, enum: ["Pending", "In Progress", "Completed", "Rescheduled"], default: "Pending" },
     discussion_topic: String,
     final_outcome: String,

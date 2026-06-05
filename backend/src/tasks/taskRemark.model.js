@@ -11,6 +11,7 @@ const taskRemarkSchema = new mongoose.Schema(
     completion_note: String,
     status_after: { type: String, enum: ["Pending", "In Progress", "Done"], default: "Pending" },
     next_review_date: Date,
+    attachment: String,
     created_by: { type: mongoose.Schema.Types.ObjectId, ref: "PA_User" }
   },
   { timestamps: true }

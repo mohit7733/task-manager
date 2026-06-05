@@ -19,12 +19,6 @@ body {
   vertical-align: top;
 }
 
-.glass {
-  background: rgba(255, 255, 255, 0.75);
-  backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.8);
-}
-
 /* Smooth transitions */
 .transition-all {
   transition-property: all;

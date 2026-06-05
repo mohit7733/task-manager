@@ -27,12 +27,19 @@ const uiSlice = createSlice({
     addQuickNote: (state, action) => {
       state.quickNotes.unshift(action.payload);
       state.quickNotes = state.quickNotes.slice(0, 10);
+    },
+    updateQuickNote: (state, action) => {
+      const { index, text } = action.payload;
+      if (state.quickNotes[index] !== undefined) state.quickNotes[index] = text;
+    },
+    removeQuickNote: (state, action) => {
+      state.quickNotes.splice(action.payload, 1);
     }
   }
 });
 
 export const { setSession, logout } = authSlice.actions;
-export const { toggleTheme, addQuickNote } = uiSlice.actions;
+export const { toggleTheme, addQuickNote, updateQuickNote, removeQuickNote } = uiSlice.actions;
 
 export const store = configureStore({
   reducer: {

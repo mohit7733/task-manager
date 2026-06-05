@@ -19,6 +19,7 @@ const taskSchema = new mongoose.Schema(
     description: String,
     department: { type: String, enum: DEPARTMENTS, required: true, index: true },
     assigned_to: { type: String, required: true, trim: true },
+    assigned_email: String,
     status: { type: String, enum: ["Pending", "In Progress", "Done"], default: "Pending", index: true },
     priority: { type: String, enum: ["Low", "Medium", "High", "Critical"], default: "Medium" },
     task_create_date: { type: Date, default: Date.now },

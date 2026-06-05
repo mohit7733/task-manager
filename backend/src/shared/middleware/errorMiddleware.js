@@ -3,7 +3,12 @@ function notFound(_req, res) {
 }
 
 function errorHandler(error, _req, res, _next) {
-  const status = res.statusCode && res.statusCode !== 200 ? res.statusCode : 500;
+  const status =
+    error.name === "MulterError" || /allowed|file/i.test(error.message || "")
+      ? 400
+      : res.statusCode && res.statusCode !== 200
+        ? res.statusCode
+        : 500;
   res.status(status).json({ message: error.message || "Server error" });
 }
 

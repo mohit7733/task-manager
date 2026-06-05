@@ -29,4 +29,18 @@ function me(req, res) {
   res.json(req.user);
 }
 
-module.exports = { register, login, me };
+async function updateSettings(req, res) {
+  const { email_notifications_enabled, reminder_lead_hours } = req.body;
+  const update = {};
+  if (typeof email_notifications_enabled === "boolean") {
+    update.email_notifications_enabled = email_notifications_enabled;
+  }
+  if (reminder_lead_hours !== undefined && reminder_lead_hours !== null) {
+    const hours = Number(reminder_lead_hours);
+    if (!Number.isNaN(hours) && hours >= 0) update.reminder_lead_hours = hours;
+  }
+  const user = await User.findByIdAndUpdate(req.user._id, update, { new: true }).select("-password");
+  res.json(user);
+}
+
+module.exports = { register, login, me, updateSettings };

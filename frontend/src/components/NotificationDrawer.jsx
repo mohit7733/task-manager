@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Bell,
@@ -110,6 +110,7 @@ export default function NotificationDrawer() {
   const [permission, setPermission] = useState(
     typeof Notification !== "undefined" ? Notification.permission : "default"
   );
+  const prevUnreadRef = useRef(-1);
 
   const unread = useMemo(() => items.filter((n) => !n.isRead).length, [items]);
 
@@ -141,6 +142,22 @@ export default function NotificationDrawer() {
   useEffect(() => {
     if (open) load();
   }, [open]);
+
+  useEffect(() => {
+    if (permission !== "granted" || typeof Notification === "undefined") return;
+    const unreadItems = items.filter((n) => !n.isRead);
+    if (prevUnreadRef.current >= 0 && unreadItems.length > prevUnreadRef.current) {
+      const newest = unreadItems[0];
+      if (newest) {
+        new Notification(newest.title, {
+          body: newest.message,
+          icon: "/favicon.svg",
+          tag: newest._id,
+        });
+      }
+    }
+    prevUnreadRef.current = unreadItems.length;
+  }, [items, permission]);
 
   const requestPermission = async () => {
     if (!("Notification" in window)) return;
