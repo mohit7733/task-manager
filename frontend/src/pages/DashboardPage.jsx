@@ -12,6 +12,8 @@ import {
 } from "lucide-react";
 import api from "../api/client";
 import PageHeader from "../components/PageHeader";
+import LoadingSpinner from "../components/LoadingSpinner";
+import EmptyState from "../components/EmptyState";
 import { brand } from "../utils/theme";
 
 export default function DashboardPage() {
@@ -40,11 +42,7 @@ export default function DashboardPage() {
   ];
 
   if (loading) {
-    return (
-      <div className="flex min-h-[60vh] items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-slate-200 border-t-indigo-600" />
-      </div>
-    );
+    return <LoadingSpinner className="min-h-[60vh]" />;
   }
 
   const completionRate = data.completionRate ?? 0;
@@ -128,7 +126,7 @@ export default function DashboardPage() {
                 </div>
               ))
             ) : (
-              <div className="p-8 text-center text-slate-400">No remarks yet</div>
+              <EmptyState bare compact icon={FileText} title="No remarks yet" />
             )}
           </div>
         </div>

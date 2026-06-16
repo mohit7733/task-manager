@@ -14,6 +14,7 @@ import {
 import { formatDistanceToNow } from "date-fns";
 import api from "../api/client";
 import { fmtDate } from "../utils/format";
+import { brand } from "../utils/theme";
 
 const TYPE_CONFIG = {
   upcoming: {
@@ -62,10 +63,10 @@ function NotificationCard({ item, onRead, index }) {
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.03 }}
       onClick={() => onRead(item._id)}
-      className={`group w-full rounded-xl border border-gray-100 border-l-4 p-4 text-left transition-all hover:shadow-md dark:border-gray-800  ${cfg.border} ${
+      className={`group w-full rounded-xl border border-slate-100 border-l-4 p-4 text-left transition-all hover:shadow-md dark:border-slate-800 ${cfg.border} ${
         !item.isRead
-          ? `bg-white shadow-sm ring-1 ring-indigo-100/80 ${cfg.glow} dark:bg-gray-900 dark:ring-indigo-900/50`
-          : "bg-gray-50/80 opacity-75 hover:opacity-100 dark:bg-gray-900/40"
+          ? `bg-white shadow-sm ring-1 ring-indigo-100/80 ${cfg.glow} dark:bg-slate-900 dark:ring-indigo-900/50`
+          : "bg-slate-50/80 opacity-75 hover:opacity-100 dark:bg-slate-900/40"
       }`}
     >
       <div className="flex gap-3">
@@ -76,21 +77,21 @@ function NotificationCard({ item, onRead, index }) {
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
-            <p className="font-semibold leading-snug text-gray-900 dark:text-white">
+            <p className="font-semibold leading-snug text-slate-900 dark:text-white">
               {item.title}
             </p>
             {!item.isRead && (
               <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-indigo-500 ring-4 ring-indigo-100 dark:ring-indigo-900" />
             )}
           </div>
-          <p className="mt-1 line-clamp-2 text-sm text-gray-600 dark:text-gray-400">
+          <p className="mt-1 line-clamp-2 text-sm text-slate-600 dark:text-slate-400">
             {item.message}
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <span className={`rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${cfg.chip}`}>
               {cfg.label}
             </span>
-            <span className="text-xs text-gray-400">{relativeTime(item.createdAt)}</span>
+            <span className="text-xs text-slate-400">{relativeTime(item.createdAt)}</span>
           </div>
         </div>
       </div>
@@ -186,7 +187,7 @@ export default function NotificationDrawer() {
         className={`relative rounded-xl border p-2.5 transition-all ${
           unread > 0
             ? "border-indigo-200 bg-indigo-50 text-indigo-700 shadow-sm shadow-indigo-100 hover:bg-indigo-100 dark:border-indigo-800 dark:bg-indigo-950 dark:text-indigo-300"
-            : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300"
+            : `${brand.btnSecondary} !px-2.5 !py-2.5`
         }`}
       >
         {unread > 0 ? (
@@ -216,7 +217,7 @@ export default function NotificationDrawer() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.2 }}
-              className="fixed inset-0 z-[200] bg-slate-900/50 backdrop-blur-[2px]"
+              className={brand.drawerOverlay}
               onClick={() => setOpen(false)}
             />
 
@@ -225,11 +226,11 @@ export default function NotificationDrawer() {
               animate={{ x: 0 }}
               exit={{ x: "100%" }}
               transition={{ type: "spring", damping: 28, stiffness: 320 }}
-              className="fixed right-0 top-0 z-[201] flex h-[600px] w-full max-w-[420px] flex-col overflow-hidden border-l border-white/10 bg-white shadow-2xl dark:bg-gray-950"
+              className="fixed right-0 top-0 z-[201] flex h-full w-full max-w-[420px] flex-col overflow-hidden border-l border-slate-200/80 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-950"
             >
               {/* Header */}
-              <div className="relative overflow-hidden border-b border-gray-100 dark:border-gray-800">
-                <div className="absolute inset-0 bg-gradient-to-br from-indigo-600 via-violet-600 to-indigo-800" />
+              <div className="relative overflow-hidden border-b border-slate-100 dark:border-slate-800">
+                <div className={`absolute inset-0 ${brand.gradientBr}`} />
                 <div className="absolute -right-8 -top-8 h-32 w-32 rounded-full bg-white/10" />
                 <div className="absolute -bottom-12 -left-8 h-24 w-24 rounded-full bg-white/5" />
 
@@ -285,13 +286,8 @@ export default function NotificationDrawer() {
               )}
 
               {/* Actions bar */}
-              <div className="flex items-center justify-between gap-2 border-b border-gray-100 px-4 py-3 dark:border-gray-800">
-                <button
-                  type="button"
-                  onClick={load}
-                  disabled={loading}
-                  className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-100 disabled:opacity-50 dark:text-gray-400 dark:hover:bg-gray-800"
-                >
+              <div className="flex items-center justify-between gap-2 border-b border-slate-100 px-4 py-3 dark:border-slate-800">
+                <button type="button" onClick={load} disabled={loading} className={brand.btnGhost}>
                   <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
                   Refresh
                 </button>
@@ -299,7 +295,7 @@ export default function NotificationDrawer() {
                   <button
                     type="button"
                     onClick={markAllRead}
-                    className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-950 dark:text-indigo-300"
+                    className={`${brand.btnGhost} font-semibold text-indigo-700 dark:text-indigo-300`}
                   >
                     <CheckCheck className="h-3.5 w-3.5" />
                     Mark all read
@@ -312,15 +308,15 @@ export default function NotificationDrawer() {
                 {loading && items.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-20">
                     <RefreshCw className="h-8 w-8 animate-spin text-indigo-400" />
-                    <p className="mt-3 text-sm text-gray-500">Loading alerts…</p>
+                    <p className="mt-3 text-sm text-slate-500">Loading alerts…</p>
                   </div>
                 ) : items.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-gray-200 bg-gray-50 py-16 text-center dark:border-gray-700 dark:bg-gray-900/50">
+                  <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50 py-16 text-center dark:border-slate-700 dark:bg-slate-900/50">
                     <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-indigo-100 dark:bg-indigo-950">
                       <Bell className="h-8 w-8 text-indigo-500" />
                     </div>
-                    <p className="font-semibold text-gray-800 dark:text-white">All clear</p>
-                    <p className="mt-1 max-w-[240px] text-sm text-gray-500">
+                    <p className="font-semibold text-slate-800 dark:text-white">All clear</p>
+                    <p className="mt-1 max-w-[240px] text-sm text-slate-500">
                       No reminders right now. Upcoming and overdue meetings will appear here.
                     </p>
                   </div>
@@ -328,7 +324,7 @@ export default function NotificationDrawer() {
                   <div className="space-y-6">
                     {grouped.unread.length > 0 && (
                       <section>
-                        <h3 className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-gray-500">
+                        <h3 className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-500">
                           <span className="h-1.5 w-1.5 rounded-full bg-indigo-500" />
                           Needs attention ({grouped.unread.length})
                         </h3>
@@ -342,7 +338,7 @@ export default function NotificationDrawer() {
 
                     {grouped.read.length > 0 && (
                       <section>
-                        <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-gray-400">
+                        <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-400">
                           Earlier ({grouped.read.length})
                         </h3>
                         <div className="space-y-3">
@@ -357,7 +353,7 @@ export default function NotificationDrawer() {
               </div>
 
               {/* Footer */}
-              <div className="border-t border-gray-100 bg-gray-50 px-4 py-3 text-center text-[11px] text-gray-400 dark:border-gray-800 dark:bg-gray-900">
+              <div className="border-t border-slate-100 bg-slate-50 px-4 py-3 text-center text-[11px] text-slate-400 dark:border-slate-800 dark:bg-slate-900">
                 Auto-refreshes every minute · Cron checks meetings every 10 min
               </div>
             </motion.aside>

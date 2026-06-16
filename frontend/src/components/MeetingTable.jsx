@@ -15,11 +15,15 @@ import {
   Paperclip,
   FileText,
   Eye,
+  Pencil,
+  Trash2,
+  ExternalLink,
 } from "lucide-react";
 import api from "../api/client";
-import { fmtDate, isOverdue } from "../utils/format";
+import { fmtDate, formatResponsiblePerson, isOverdue, responsiblePersonSearchText, toInputDate } from "../utils/format";
 import { ACCEPT_MOM, buildFormData, uploadUrl } from "../utils/upload";
 import { brand } from "../utils/theme";
+import { FieldLabel, fieldClass } from "./FormModal";
 import { Link } from "react-router-dom";
 
 const EMPTY_FORM = {
@@ -41,7 +45,7 @@ const STATUS_STYLES = {
 const COLUMNS = [
   "Task Date",
   "Meeting Date",
-  "Time",
+  // "Time",
   "Int/Ext",
   "Title",
   "Responsible",
@@ -54,11 +58,34 @@ const COLUMNS = [
   "Actions",
 ];
 
-function RemarkModal({ meeting, onClose, onSaved, saving, setSaving }) {
-  const [mode, setMode] = useState("followup"); // followup | completed
+function RemarkModal({ meeting, remark, onClose, onSaved, saving, setSaving }) {
+  const isEdit = Boolean(remark);
+  const [mode, setMode] = useState("followup");
   const [form, setForm] = useState(EMPTY_FORM);
   const [momFile, setMomFile] = useState(null);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!remark) {
+      setForm(EMPTY_FORM);
+      setMode("followup");
+      setMomFile(null);
+      setError("");
+      return;
+    }
+    const isFollowup = Boolean(remark.next_meeting_date);
+    setMode(isFollowup ? "followup" : "completed");
+    setForm({
+      remark_description: remark.remark_description || "",
+      next_meeting_date: toInputDate(remark.next_meeting_date),
+      next_meeting_time: remark.next_meeting_time || "",
+      next_agenda: remark.next_agenda || "",
+      next_followup_note: remark.next_followup_note || "",
+      final_outcome: isFollowup ? "" : meeting.final_outcome || "",
+    });
+    setMomFile(null);
+    setError("");
+  }, [remark, meeting]);
 
   const switchMode = (next) => {
     setMode(next);
@@ -113,7 +140,11 @@ function RemarkModal({ meeting, onClose, onSaved, saving, setSaving }) {
       }
 
       const fd = buildFormData(payload, momFile);
-      await api.post("/remarks", fd);
+      if (isEdit) {
+        await api.put(`/remarks/${remark._id}`, fd);
+      } else {
+        await api.post("/remarks", fd);
+      }
       onSaved();
       onClose();
     } catch (err) {
@@ -143,7 +174,9 @@ function RemarkModal({ meeting, onClose, onSaved, saving, setSaving }) {
         <div className={`${brand.modalHeader}`}>
           <div className="flex items-start justify-between gap-4">
             <div>
-              <p className="text-xs font-medium uppercase tracking-wider text-indigo-200">Add Remark</p>
+              <p className="text-xs font-medium uppercase tracking-wider text-indigo-200">
+                {isEdit ? `Edit Remark #${remark.remark_number}` : "Add Remark"}
+              </p>
               <h3 className="mt-1 text-lg font-bold leading-tight">{meeting.title}</h3>
               <div className="mt-2 flex flex-wrap gap-2 text-xs text-indigo-100">
                 <span className="inline-flex items-center gap-1 rounded-md bg-white/15 px-2 py-0.5">
@@ -151,10 +184,10 @@ function RemarkModal({ meeting, onClose, onSaved, saving, setSaving }) {
                   {fmtDate(meeting.meeting_date)}
                   {meeting.meeting_time ? ` · ${meeting.meeting_time}` : ""}
                 </span>
-                {meeting.responsible_person && (
+                {formatResponsiblePerson(meeting.responsible_person) && (
                   <span className="inline-flex items-center gap-1 rounded-md bg-white/15 px-2 py-0.5">
                     <User className="h-3 w-3" />
-                    {meeting.responsible_person}
+                    {formatResponsiblePerson(meeting.responsible_person)}
                   </span>
                 )}
               </div>
@@ -170,44 +203,47 @@ function RemarkModal({ meeting, onClose, onSaved, saving, setSaving }) {
         </div>
 
         <div className="flex-1 overflow-y-auto px-6 py-5">
-          {/* Mode selector */}
-          <p className="mb-3 text-sm font-medium text-gray-700 dark:text-gray-300">
-            After this meeting, what happened?
-          </p>
-          <div className="mb-6 grid grid-cols-2 gap-3">
-            <button
-              type="button"
-              onClick={() => switchMode("followup")}
-              className={`rounded-xl border-2 p-4 text-left transition-all ${mode === "followup"
-                ? "border-amber-400 bg-amber-50 ring-2 ring-amber-200 dark:bg-amber-950/40"
-                : "border-gray-200 hover:border-gray-300 dark:border-gray-700"
-                }`}
-            >
-              <CalendarClock
-                className={`mb-2 h-6 w-6 ${mode === "followup" ? "text-amber-600" : "text-gray-400"}`}
-              />
-              <p className="font-semibold text-gray-900 dark:text-white">Not resolved</p>
-              <p className="mt-1 text-xs text-gray-500">
-                Schedule next meeting & followup — cannot add final outcome
+          {!isEdit && (
+            <>
+              <p className="mb-3 text-sm font-medium text-gray-700 dark:text-gray-300">
+                After this meeting, what happened?
               </p>
-            </button>
-            <button
-              type="button"
-              onClick={() => switchMode("completed")}
-              className={`rounded-xl border-2 p-4 text-left transition-all ${mode === "completed"
-                ? "border-emerald-400 bg-emerald-50 ring-2 ring-emerald-200 dark:bg-emerald-950/40"
-                : "border-gray-200 hover:border-gray-300 dark:border-gray-700"
-                }`}
-            >
-              <CheckCircle2
-                className={`mb-2 h-6 w-6 ${mode === "completed" ? "text-emerald-600" : "text-gray-400"}`}
-              />
-              <p className="font-semibold text-gray-900 dark:text-white">Resolved / Done</p>
-              <p className="mt-1 text-xs text-gray-500">
-                Add final outcome — meeting will be marked completed
-              </p>
-            </button>
-          </div>
+              <div className="mb-6 grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => switchMode("followup")}
+                  className={`rounded-xl border-2 p-4 text-left transition-all ${mode === "followup"
+                    ? "border-amber-400 bg-amber-50 ring-2 ring-amber-200 dark:bg-amber-950/40"
+                    : "border-gray-200 hover:border-gray-300 dark:border-gray-700"
+                    }`}
+                >
+                  <CalendarClock
+                    className={`mb-2 h-6 w-6 ${mode === "followup" ? "text-amber-600" : "text-gray-400"}`}
+                  />
+                  <p className="font-semibold text-gray-900 dark:text-white">Not resolved</p>
+                  <p className="mt-1 text-xs text-gray-500">
+                    Schedule next meeting & followup — cannot add final outcome
+                  </p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => switchMode("completed")}
+                  className={`rounded-xl border-2 p-4 text-left transition-all ${mode === "completed"
+                    ? "border-emerald-400 bg-emerald-50 ring-2 ring-emerald-200 dark:bg-emerald-950/40"
+                    : "border-gray-200 hover:border-gray-300 dark:border-gray-700"
+                    }`}
+                >
+                  <CheckCircle2
+                    className={`mb-2 h-6 w-6 ${mode === "completed" ? "text-emerald-600" : "text-gray-400"}`}
+                  />
+                  <p className="font-semibold text-gray-900 dark:text-white">Resolved / Done</p>
+                  <p className="mt-1 text-xs text-gray-500">
+                    Add final outcome — meeting will be marked completed
+                  </p>
+                </button>
+              </div>
+            </>
+          )}
 
           {/* Remark (always required) */}
           <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -319,18 +355,18 @@ function RemarkModal({ meeting, onClose, onSaved, saving, setSaving }) {
           </AnimatePresence>
 
           {error && (
-            <p className="mt-4 flex items-center gap-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/50 dark:text-red-300">
+            <div className={`mt-4 ${brand.errorAlert}`}>
               <AlertCircle className="h-4 w-4 shrink-0" />
               {error}
-            </p>
+            </div>
           )}
         </div>
 
-        <div className="flex gap-3 border-t border-gray-100 bg-gray-50 px-6 py-4 dark:border-gray-800 dark:bg-gray-900/80">
+        <div className={brand.modalFooter}>
           <button
             type="button"
             onClick={onClose}
-            className="flex-1 rounded-xl border border-gray-200 py-2.5 text-sm font-medium text-gray-700 hover:bg-white dark:border-gray-600 dark:text-gray-300"
+            className={`flex-1 py-2.5 ${brand.btnSecondary}`}
           >
             Cancel
           </button>
@@ -338,12 +374,16 @@ function RemarkModal({ meeting, onClose, onSaved, saving, setSaving }) {
             type="button"
             disabled={saving}
             onClick={submit}
-            className={`flex-1 rounded-xl py-2.5 text-sm font-semibold text-white shadow-md disabled:opacity-50 ${mode === "completed"
-              ? "bg-emerald-600 hover:bg-emerald-500"
-              : "bg-indigo-600 hover:bg-indigo-500"
+            className={`flex-1 rounded-xl py-2.5 text-sm font-semibold shadow-md disabled:opacity-50 ${mode === "completed" ? brand.btnSuccess : brand.btn
               }`}
           >
-            {saving ? "Saving…" : mode === "completed" ? "Save & Complete Meeting" : "Save & Schedule Followup"}
+            {saving
+              ? "Saving…"
+              : isEdit
+                ? "Save Remark"
+                : mode === "completed"
+                  ? "Save & Complete Meeting"
+                  : "Save & Schedule Followup"}
           </button>
         </div>
       </motion.div>
@@ -351,13 +391,14 @@ function RemarkModal({ meeting, onClose, onSaved, saving, setSaving }) {
   );
 }
 
-export default function MeetingTable({ meetings, reload, highlightMeetingId }) {
+export default function MeetingTable({ meetings, reload, highlightMeetingId, onEditMeeting }) {
   const [expanded, setExpanded] = useState(null);
   const [timeline, setTimeline] = useState(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [page, setPage] = useState(1);
   const [modalMeeting, setModalMeeting] = useState(null);
+  const [editingRemark, setEditingRemark] = useState(null);
   const [saving, setSaving] = useState(false);
   const perPage = 15;
 
@@ -369,7 +410,7 @@ export default function MeetingTable({ meetings, reload, highlightMeetingId }) {
       list = list.filter(
         (m) =>
           m.title?.toLowerCase().includes(q) ||
-          m.responsible_person?.toLowerCase().includes(q) ||
+          responsiblePersonSearchText(m.responsible_person).includes(q) ||
           m.discussion_topic?.toLowerCase().includes(q)
       );
     }
@@ -399,12 +440,46 @@ export default function MeetingTable({ meetings, reload, highlightMeetingId }) {
     expand();
   }, [highlightMeetingId, meetings.length]);
 
-  const openRemarkModal = (meeting, e) => {
+  const openRemarkModal = (meeting, e, remark = null) => {
     e.stopPropagation();
+    setEditingRemark(remark);
     setModalMeeting(meeting);
   };
 
-  const closeModal = () => setModalMeeting(null);
+  const closeModal = () => {
+    setModalMeeting(null);
+    setEditingRemark(null);
+  };
+
+  const deleteMeeting = async (meeting, e) => {
+    e.stopPropagation();
+    if (!window.confirm(`Delete meeting "${meeting.title}"? All remarks will also be removed.`)) return;
+    try {
+      await api.delete(`/meetings/${meeting._id}`);
+      if (expanded === meeting._id) {
+        setExpanded(null);
+        setTimeline(null);
+      }
+      await reload();
+    } catch {
+      alert("Failed to delete meeting.");
+    }
+  };
+
+  const deleteRemark = async (remark, meetingId, e) => {
+    e.stopPropagation();
+    if (!window.confirm(`Delete remark #${remark.remark_number}?`)) return;
+    try {
+      await api.delete(`/remarks/${remark._id}`);
+      await reload();
+      if (expanded === meetingId) {
+        const { data } = await api.get(`/meetings/${meetingId}/timeline`);
+        setTimeline(data);
+      }
+    } catch {
+      alert("Failed to delete remark.");
+    }
+  };
 
   const onRemarkSaved = async () => {
     await reload();
@@ -434,9 +509,9 @@ export default function MeetingTable({ meetings, reload, highlightMeetingId }) {
   return (
     <div className="space-y-4">
       {/* Toolbar */}
-      <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-gray-200/80 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900">
+      <div className={brand.toolbar}>
         <div className="relative min-w-[220px] flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <input
             value={search}
             onChange={(e) => {
@@ -444,7 +519,7 @@ export default function MeetingTable({ meetings, reload, highlightMeetingId }) {
               setPage(1);
             }}
             placeholder="Search title, person, topic…"
-            className="w-full rounded-xl border-0 bg-gray-50 py-2.5 pl-10 pr-3 text-sm ring-1 ring-gray-200 focus:ring-2 focus:ring-indigo-500 dark:bg-gray-800 dark:ring-gray-600 dark:text-white"
+            className={brand.searchInput}
           />
         </div>
         <select
@@ -453,7 +528,7 @@ export default function MeetingTable({ meetings, reload, highlightMeetingId }) {
             setStatusFilter(e.target.value);
             setPage(1);
           }}
-          className="rounded-xl border-0 bg-gray-50 px-4 py-2.5 text-sm ring-1 ring-gray-200 dark:bg-gray-800 dark:ring-gray-600 dark:text-white"
+          className={brand.toolbarSelect}
         >
           <option value="">All status</option>
           <option>Pending</option>
@@ -464,16 +539,15 @@ export default function MeetingTable({ meetings, reload, highlightMeetingId }) {
         <button
           type="button"
           onClick={reload}
-          className="inline-flex items-center gap-2 rounded-xl bg-gray-50 px-4 py-2.5 text-sm font-medium ring-1 ring-gray-200 hover:bg-gray-100 dark:bg-gray-800 dark:ring-gray-600"
+          className={brand.toolbarBtn}
         >
           <RefreshCw className="h-4 w-4" />
           Refresh
         </button>
-        <span className="text-xs text-gray-500">{filtered.length} meetings</span>
+        <span className="text-xs text-slate-500">{filtered.length} meetings</span>
       </div>
 
-      {/* Table */}
-      <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-md dark:border-gray-700 dark:bg-gray-900">
+      <div className={brand.tableWrap}>
         <div className="max-h-[68vh] overflow-auto">
           <table className="excel-table w-full min-w-[1400px] border-collapse text-[13px]">
             <thead>
@@ -530,8 +604,6 @@ export default function MeetingTable({ meetings, reload, highlightMeetingId }) {
                             {fmtDate(m.meeting_date)}
                             {overdue && <AlertCircle className="h-3.5 w-3.5 text-red-500" title="Overdue" />}
                           </span>
-                        </td>
-                        <td className="border-b border-r border-gray-100 px-3 py-2.5 dark:border-gray-800">
                           {m.meeting_time ? (
                             <span className="inline-flex items-center gap-1 text-gray-600">
                               <Clock className="h-3 w-3" />
@@ -541,6 +613,16 @@ export default function MeetingTable({ meetings, reload, highlightMeetingId }) {
                             "—"
                           )}
                         </td>
+                        {/* <td className="border-b border-r border-gray-100 px-3 py-2.5 dark:border-gray-800">
+                          {m.meeting_time ? (
+                            <span className="inline-flex items-center gap-1 text-gray-600">
+                              <Clock className="h-3 w-3" />
+                              {m.meeting_time}
+                            </span>
+                          ) : (
+                            "—"
+                          )}
+                        </td> */}
                         <td className="border-b border-r border-gray-100 px-3 py-2.5 capitalize dark:border-gray-800">
                           <span
                             className={`rounded-md px-2 py-0.5 text-xs font-medium ${m.meeting_type === "external"
@@ -555,7 +637,7 @@ export default function MeetingTable({ meetings, reload, highlightMeetingId }) {
                           {m.title}
                         </td>
                         <td className="border-b border-r border-gray-100 px-3 py-2.5 dark:border-gray-800">
-                          {m.responsible_person || "—"}
+                          {formatResponsiblePerson(m.responsible_person) || "—"}
                         </td>
                         <td
                           className="border-b border-r border-gray-100 px-2 py-2 dark:border-gray-800"
@@ -614,15 +696,40 @@ export default function MeetingTable({ meetings, reload, highlightMeetingId }) {
                           className="border-b border-gray-100 px-2 py-2 dark:border-gray-800"
                           onClick={(e) => e.stopPropagation()}
                         >
-                          <button
-                            type="button"
-                            title="Add remark"
-                            onClick={(e) => openRemarkModal(m, e)}
-                            className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-indigo-500 hover:shadow"
-                          >
-                            <MessageSquarePlus className="h-3.5 w-3.5" />
-                            Remark
-                          </button>
+                          <div className="flex flex-wrap gap-1">
+                            {onEditMeeting && (
+                              <button
+                                type="button"
+                                title="Edit meeting"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onEditMeeting(m);
+                                }}
+                                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300"
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                                Edit
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              title="Delete meeting"
+                              onClick={(e) => deleteMeeting(m, e)}
+                              className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-2 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 dark:border-red-900 dark:text-red-400"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              title="Add remark"
+                              onClick={(e) => openRemarkModal(m, e)}
+                              className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-2 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-indigo-500"
+                            >
+                              <MessageSquarePlus className="h-3.5 w-3.5" />
+                              Remark
+                            </button>
+
+                          </div>
                         </td>
                       </tr>
 
@@ -651,15 +758,28 @@ export default function MeetingTable({ meetings, reload, highlightMeetingId }) {
                                         <div>
                                           <p className="text-xs uppercase font-bold text-indigo-600 dark:text-indigo-300">Created</p>
                                           <p className="text-sm font-medium text-slate-800 dark:text-slate-200">{fmtDate(timeline.meeting.task_create_date)}</p>
-                                          <Link to={`${uploadUrl(timeline.meeting?.attachment)}`} target="_blank" className="inline-block rounded-full bg-indigo-600 text-white px-3 py-1 text-xs font-semibold dark:bg-indigo-400 mt-2 sm:mt-0">
+                                          <Link to={`${uploadUrl(timeline.meeting?.attachment)}`} target="_blank" className="inline-flex items-center gap-1 rounded-full bg-indigo-600 text-white px-3 py-1 text-xs font-semibold dark:bg-indigo-400 mt-2 sm:mt-0">
                                             <Eye className="h-3 w-3" />
+                                            View MOM document
                                           </Link>
+
+                                          {timeline.meeting.meeting_link && (
+                                            <Link
+                                              to={timeline.meeting.meeting_link}
+                                              target="_blank"
+                                              title="View meeting link"
+                                              className="ml-2 inline-flex items-center gap-1 rounded-full bg-indigo-600 text-white px-3 py-1 text-xs font-semibold dark:bg-indigo-400 sm:mt-0"
+                                            >
+                                              <ExternalLink className="h-3.5 w-3.5" />
+                                              View meeting link
+                                            </Link>
+                                          )}
                                         </div>
                                         <span className="inline-block rounded-full bg-indigo-600 text-white px-3 py-1 text-xs font-semibold dark:bg-indigo-400 mt-2 sm:mt-0">
                                           {timeline.meeting.status}
                                         </span>
                                       </div>
-                                      {(timeline.remarks || []).map((r, idx) => (
+                                      {(timeline.remarks || []).map((r) => (
                                         <div key={r._id} className="bg-white dark:bg-slate-900 border-l-4 border-amber-500 rounded-md px-4 py-3 shadow flex flex-row items-center gap-4 relative">
                                           <span className="h-9 w-9 flex items-center justify-center rounded-full bg-amber-100 text-amber-700 shadow ring-2 ring-amber-200 absolute left-0 -translate-x-1/2 dark:bg-amber-900 dark:text-amber-200 dark:ring-amber-700">
                                             #{r.remark_number}
@@ -694,6 +814,24 @@ export default function MeetingTable({ meetings, reload, highlightMeetingId }) {
                                                 </a>
                                               )}
                                             </div>
+                                          </div>
+                                          <div className="flex shrink-0 gap-1" onClick={(e) => e.stopPropagation()}>
+                                            <button
+                                              type="button"
+                                              title="Edit remark"
+                                              onClick={(e) => openRemarkModal(m, e, r)}
+                                              className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+                                            >
+                                              <Pencil className="h-4 w-4" />
+                                            </button>
+                                            <button
+                                              type="button"
+                                              title="Delete remark"
+                                              onClick={(e) => deleteRemark(r, m._id, e)}
+                                              className="rounded-lg p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40"
+                                            >
+                                              <Trash2 className="h-4 w-4" />
+                                            </button>
                                           </div>
                                         </div>
                                       ))}
@@ -766,6 +904,7 @@ export default function MeetingTable({ meetings, reload, highlightMeetingId }) {
         {modalMeeting && (
           <RemarkModal
             meeting={modalMeeting}
+            remark={editingRemark}
             onClose={closeModal}
             onSaved={onRemarkSaved}
             saving={saving}

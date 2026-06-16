@@ -17,8 +17,10 @@ import {
   Building2,
 } from "lucide-react";
 import api from "../api/client";
-import { fmtDate } from "../utils/format";
+import { formatResponsiblePerson } from "../utils/format";
 import { apiEventToFullCalendar, deptTaskEventToFullCalendar } from "../utils/calendar";
+import PageHeader from "../components/PageHeader";
+import LoadingSpinner from "../components/LoadingSpinner";
 import { brand } from "../utils/theme";
 
 const MEETING_KIND_LABELS = {
@@ -53,10 +55,10 @@ const DEPT_LEGEND = [
 
 function CalendarPanel({ loading, view, events, onEventClick, onEventDrop, emptyMessage }) {
   if (loading) {
-    return <p className="py-20 text-center text-gray-500">Loading calendar…</p>;
+    return <LoadingSpinner label="Loading calendar…" className="py-20" />;
   }
   if (events.length === 0) {
-    return <p className="py-20 text-center text-gray-500">{emptyMessage}</p>;
+    return <p className="py-20 text-center text-slate-500">{emptyMessage}</p>;
   }
   return (
     <FullCalendar
@@ -214,53 +216,51 @@ export default function CalendarPage() {
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Calendar</h2>
-          <p className="text-sm text-gray-500">
-            {tab === "meeting"
-              ? "Meetings, followups, and reminders — separate from department tasks"
-              : "Department weekly tasks — reviews and meeting remarks only"}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
+      <PageHeader
+        title="Calendar"
+        subtitle={
+          tab === "meeting"
+            ? "Meetings, followups, and reminders — separate from department tasks"
+            : "Department weekly tasks — reviews and meeting remarks only"
+        }
+        icon={CalendarDays}
+      >
+        <button
+          type="button"
+          onClick={loadAll}
+          disabled={loadingMeeting || loadingDept}
+          className={brand.btnSecondary}
+        >
+          <RefreshCw className={`h-4 w-4 ${loadingMeeting || loadingDept ? "animate-spin" : ""}`} />
+          Refresh
+        </button>
+        <div className={brand.tabGroup}>
           <button
             type="button"
-            onClick={loadAll}
-            disabled={loadingMeeting || loadingDept}
-            className="inline-flex items-center gap-1 rounded-lg border px-3 py-2 text-sm hover:bg-gray-50 dark:border-gray-700"
+            onClick={() => {
+              setTab("meeting");
+              setSelected(null);
+            }}
+            className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium ${
+              tab === "meeting" ? brand.tabActive : brand.tabInactive
+            }`}
           >
-            <RefreshCw className={`h-4 w-4 ${loadingMeeting || loadingDept ? "animate-spin" : ""}`} />
-            Refresh
+            <CalendarDays className="h-4 w-4" /> Meeting Calendar
           </button>
-          <div className="flex rounded-xl border border-gray-200 bg-white p-1 dark:border-gray-700 dark:bg-gray-900">
-            <button
-              type="button"
-              onClick={() => {
-                setTab("meeting");
-                setSelected(null);
-              }}
-              className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium ${
-                tab === "meeting" ? brand.tabActive : brand.tabInactive
-              }`}
-            >
-              <CalendarDays className="h-4 w-4" /> Meeting Calendar
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setTab("dept");
-                setSelected(null);
-              }}
-              className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium ${
-                tab === "dept" ? brand.tabActive : brand.tabInactive
-              }`}
-            >
-              <ListTodo className="h-4 w-4" /> Task Calendar
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setTab("dept");
+              setSelected(null);
+            }}
+            className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium ${
+              tab === "dept" ? brand.tabActive : brand.tabInactive
+            }`}
+          >
+            <ListTodo className="h-4 w-4" /> Task Calendar
+          </button>
         </div>
-      </div>
+      </PageHeader>
 
       <div className="flex flex-wrap gap-2">
         {["dayGridMonth", "timeGridWeek", "timeGridDay"].map((v) => (
@@ -268,8 +268,8 @@ export default function CalendarPage() {
             key={v}
             type="button"
             onClick={() => setView(v)}
-            className={`rounded-lg border px-3 py-1.5 text-sm ${
-              view === v ? brand.viewActive : "dark:border-gray-700"
+            className={`rounded-lg border px-3 py-1.5 text-sm transition ${
+              view === v ? brand.viewActive : brand.viewInactive
             }`}
           >
             {v === "dayGridMonth" ? "Month" : v === "timeGridWeek" ? "Week" : "Day"}
@@ -277,17 +277,16 @@ export default function CalendarPage() {
         ))}
       </div>
 
-      <div className="flex flex-wrap gap-4 rounded-xl border border-gray-100 bg-gray-50/80 px-4 py-3 dark:border-gray-800 dark:bg-gray-900/50">
+      <div className={brand.legendBar}>
         {legend.map((l) => (
-          <span key={l.label} className="inline-flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
+          <span key={l.label} className="inline-flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400">
             <span className="h-3 w-3 rounded-sm" style={{ backgroundColor: l.color }} />
             {l.label}
           </span>
         ))}
       </div>
 
-      {/* Only one calendar mounted at a time — fully separate data & drag handlers */}
-      <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900 [&_.fc]:text-sm">
+      <div className={`${brand.card} p-4 [&_.fc]:text-sm`}>
         {tab === "meeting" ? (
           <CalendarPanel
             loading={loadingMeeting}
@@ -309,7 +308,7 @@ export default function CalendarPage() {
         )}
       </div>
 
-      <p className="text-center text-xs text-gray-400">
+      <p className="text-center text-xs text-slate-400">
         Showing {activeEvents.length} {tab === "meeting" ? "meeting" : "department task"} event(s)
       </p>
 
@@ -327,13 +326,13 @@ export default function CalendarPage() {
               initial={{ opacity: 0, scale: 0.96 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.96 }}
-              className="relative z-10 w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-gray-900"
+              className="relative z-10 w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-slate-900"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className={`border-b px-5 py-4 text-white ${brand.headerBg}`}>
+              <div className={brand.modalHeader}>
                 <div className="flex justify-between gap-3">
                   <div>
-                    <p className={`text-xs font-medium uppercase tracking-wide ${brand.textMuted}`}>{kindLabel}</p>
+                    <p className="text-xs font-medium uppercase tracking-wide text-indigo-200">{kindLabel}</p>
                     <h3 className="text-lg font-bold">{selected.title}</h3>
                   </div>
                   <button type="button" onClick={() => setSelected(null)} className="rounded-lg p-1 hover:bg-white/20">
@@ -343,19 +342,19 @@ export default function CalendarPage() {
               </div>
 
               <div className="space-y-3 px-5 py-4 text-sm">
-                <div className="flex items-center gap-2 text-gray-700 dark:text-gray-300">
-                  <Clock className="h-4 w-4 text-gray-400" />
+                <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
+                  <Clock className="h-4 w-4 text-slate-400" />
                   <span>
                     {fmtDate(selected.date, "EEEE, d MMM yyyy")}
                     {selected.time ? ` at ${selected.time}` : " (all day)"}
                   </span>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <span className="rounded-md bg-gray-100 px-2 py-0.5 text-xs font-medium dark:bg-gray-800">
+                  <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium dark:bg-slate-800">
                     {selected.status}
                   </span>
                   {selected.priority && (
-                    <span className="rounded-md bg-gray-100 px-2 py-0.5 text-xs font-medium dark:bg-gray-800">
+                    <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium dark:bg-slate-800">
                       {selected.priority}
                     </span>
                   )}
@@ -366,15 +365,17 @@ export default function CalendarPage() {
                     </span>
                   )}
                   {!isDept && selected.meeting_type && (
-                    <span className="rounded-md bg-gray-100 px-2 py-0.5 text-xs capitalize dark:bg-gray-800">
+                    <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs capitalize dark:bg-slate-800">
                       {selected.meeting_type}
                     </span>
                   )}
                 </div>
-                {(selected.assigned_to || selected.responsible_person) && (
-                  <p className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
+                {(selected.assigned_to || formatResponsiblePerson(selected.responsible_person)) && (
+                  <p className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
                     <User className="h-4 w-4" />
-                    {selected.assigned_to || selected.responsible_person}
+                    {Array.isArray(selected.assigned_to)
+                      ? selected.assigned_to.map((u) => u.name).filter(Boolean).join(", ")
+                      : selected.assigned_to || formatResponsiblePerson(selected.responsible_person)}
                   </p>
                 )}
                 {selected.discussion_topic && (
@@ -415,12 +416,8 @@ export default function CalendarPage() {
                 )}
               </div>
 
-              <div className="flex gap-3 border-t bg-gray-50 px-5 py-4 dark:border-gray-800 dark:bg-gray-900/80">
-                <button
-                  type="button"
-                  onClick={() => setSelected(null)}
-                  className="flex-1 rounded-xl border py-2.5 text-sm font-medium dark:border-gray-600"
-                >
+              <div className={brand.modalFooter}>
+                <button type="button" onClick={() => setSelected(null)} className={`flex-1 py-2.5 ${brand.btnSecondary}`}>
                   Close
                 </button>
                 <button
@@ -428,7 +425,7 @@ export default function CalendarPage() {
                   onClick={() =>
                     isDept ? navigate("/tasks") : navigate(`/meetings?meeting=${selected.meetingId}`)
                   }
-                  className={`flex flex-1 items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-semibold text-white ${brand.btn}`}
+                  className={`flex flex-1 items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-semibold ${brand.btn}`}
                 >
                   <ExternalLink className="h-4 w-4" />
                   {isDept ? "Open Dept. Tasks" : "Open in Meetings"}

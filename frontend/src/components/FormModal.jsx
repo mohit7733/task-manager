@@ -88,11 +88,7 @@ export default function FormModal({
 
         <div className="flex-1 overflow-y-auto px-6 py-5">{children}</div>
 
-        {footer && (
-          <div className="flex gap-3 border-t border-slate-100 bg-slate-50 px-6 py-4 dark:border-slate-800 dark:bg-slate-900/80">
-            {footer}
-          </div>
-        )}
+        {footer && <div className={brand.modalFooter}>{footer}</div>}
       </motion.div>
     </div>
   );

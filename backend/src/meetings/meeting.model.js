@@ -9,8 +9,7 @@ const meetingSchema = new mongoose.Schema(
     meeting_type: { type: String, enum: ["internal", "external"], default: "internal" },
     title: { type: String, required: true },
     description: String,
-    responsible_person: String,
-    responsible_email: String,
+    responsible_person: { type: [{ type: Object, required: true }], default: [] },
     status: { type: String, enum: ["Pending", "In Progress", "Completed", "Rescheduled"], default: "Pending" },
     discussion_topic: String,
     final_outcome: String,
@@ -19,6 +18,7 @@ const meetingSchema = new mongoose.Schema(
     created_by: { type: mongoose.Schema.Types.ObjectId, ref: "PA_User" },
     coo_id: { type: String, required: true, index: true },
     attachment: String,
+    meeting_link: String,
     recurrence: { type: String, enum: ["None", "Daily", "Weekly", "Monthly"], default: "None" }
   },
   { timestamps: true }

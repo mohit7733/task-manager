@@ -6,7 +6,7 @@ const taskRemarkSchema = new mongoose.Schema(
     remark_number: Number,
     remark_date: { type: Date, default: Date.now },
     meeting_date: Date,
-    remark_description: { type: String, required: true },
+    remark_description: { type: String, required: false },
     pending_reason: String,
     completion_note: String,
     status_after: { type: String, enum: ["Pending", "In Progress", "Done"], default: "Pending" },

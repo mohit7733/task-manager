@@ -48,7 +48,7 @@ export default function LoginPage() {
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className={`w-full rounded-lg border border-white/20 bg-white/10 px-3 py-2.5 text-sm text-white placeholder:text-indigo-300/60 ${brand.focus}`}
+              className={`w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2.5 text-sm text-white placeholder:text-indigo-300/60 ${brand.focus}`}
               required
             />
           </div>
@@ -58,7 +58,7 @@ export default function LoginPage() {
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className={`w-full rounded-lg border border-white/20 bg-white/10 px-3 py-2.5 text-sm text-white placeholder:text-indigo-300/60 ${brand.focus}`}
+              className={`w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2.5 text-sm text-white placeholder:text-indigo-300/60 ${brand.focus}`}
               required
             />
           </div>
@@ -66,12 +66,12 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className={`w-full rounded-lg py-2.5 text-sm font-semibold disabled:opacity-60 ${brand.gradient} ${brand.gradientHover}`}
+            className={`w-full rounded-xl py-2.5 text-sm font-semibold disabled:opacity-60 ${brand.gradient} ${brand.gradientHover}`}
           >
             {loading ? "Signing in…" : `Sign in to ${APP_NAME}`}
           </button>
         </form>
-        <p className="mt-6 text-center text-xs text-indigo-300/80">Demo: pa@coo.com / pa123456</p>
+        {/* <p className="mt-6 text-center text-xs text-indigo-300/80">Demo: pa@coo.com / pa123456</p> */}
       </motion.div>
     </div>
   );

@@ -7,6 +7,8 @@ const {
   getTaskTimeline,
   addTaskRemark,
   getRemarksByTask,
+  updateTaskRemark,
+  deleteTaskRemark,
   removeTask,
   getTaskCalendarEvents
 } = require("./tasks.controller");
@@ -18,6 +20,8 @@ router.get("/", listTasks);
 router.get("/stats", getTaskStats);
 router.get("/calendar-events", getTaskCalendarEvents);
 router.post("/remarks", upload.single("attachment"), addTaskRemark);
+router.put("/remarks/:id", upload.single("attachment"), updateTaskRemark);
+router.delete("/remarks/:id", deleteTaskRemark);
 router.get("/remarks/:taskId", getRemarksByTask);
 router.post("/", createTask);
 router.put("/:id", updateTask);

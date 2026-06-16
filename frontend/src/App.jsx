@@ -5,6 +5,7 @@ import Sidebar from "./components/Sidebar";
 import NotificationDrawer from "./components/NotificationDrawer";
 import ProtectedRoute from "./components/ProtectedRoute";
 import LoginPage from "./pages/LoginPage";
+import GuestSharePage from "./pages/GuestSharePage";
 import DashboardPage from "./pages/DashboardPage";
 import MeetingsPage from "./pages/MeetingsPage";
 import TasksPage from "./pages/TasksPage";
@@ -12,6 +13,7 @@ import CalendarPage from "./pages/CalendarPage";
 import { FollowupsPage, ReportsPage, SettingsPage } from "./pages/SimplePages";
 import api from "./api/client";
 import { setSession, logout, toggleTheme } from "./store/store";
+import { brand } from "./utils/theme";
 
 function AppShell() {
   const dark = useSelector((s) => s.ui.darkMode);
@@ -44,7 +46,7 @@ function AppShell() {
             <button
               type="button"
               onClick={() => dispatch(toggleTheme())}
-              className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 dark:border-slate-600 dark:text-slate-300"
+              className={`rounded-xl px-3 py-1.5 text-xs font-medium ${brand.btnSecondary}`}
             >
               {dark ? "Light" : "Dark"}
             </button>
@@ -76,6 +78,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/share/:token" element={<GuestSharePage />} />
       <Route
         path="/*"
         element={

@@ -1,23 +1,25 @@
-import { useEffect, useState } from "react";
-import { Plus, RefreshCw, Building2, User, ListChecks, CalendarClock } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Plus, RefreshCw, Building2, User, ListChecks, CalendarClock, Clock, CheckCircle2, AlertCircle } from "lucide-react";
 import api from "../api/client";
 import TaskTable from "../components/TaskTable";
 import PageHeader from "../components/PageHeader";
 import FormModal, { FieldLabel, fieldClass, FormSection } from "../components/FormModal";
+import LoadingSpinner from "../components/LoadingSpinner";
 import { brand } from "../utils/theme";
+import { toInputDate } from "../utils/format";
 
-const DEPARTMENTS = [
-  "HR",
-  "Finance",
-  "Operations",
-  "IT",
-  "Sales",
-  "Marketing",
-  "Legal",
-  "Procurement",
-  "Administration",
-  "Other",
-];
+function taskToForm(t) {
+  return {
+    title: t.title || "",
+    description: t.description || "",
+    department: t.department || "Operations",
+    assigned_to: t.assigned_to || [],
+    status: t.status || "Pending",
+    priority: t.priority || "Medium",
+    next_review_date: toInputDate(t.next_review_date),
+    weekly_meeting_day: t.weekly_meeting_day || "",
+  };
+}
 
 const WEEKDAYS = ["", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
@@ -25,13 +27,42 @@ const EMPTY_FORM = {
   title: "",
   description: "",
   department: "Operations",
-  assigned_to: "",
-  assigned_email: "",
+  assigned_to: [],
   status: "Pending",
   priority: "Medium",
   next_review_date: "",
   weekly_meeting_day: "",
 };
+
+function splitCSV(value) {
+  return (value || "")
+    .split(",")
+    .map((v) => v.trim())
+    .filter(Boolean);
+}
+
+function getUserEmail(user) {
+  return (
+    user?.user_detail ||
+    ""
+  );
+}
+
+function getUserKey(user) {
+  return String(user?.emp_code || user?.id || user?._id || user?.name || "");
+}
+
+function normalizeUsers(rawUsers) {
+  return (Array.isArray(rawUsers) ? rawUsers : [])
+    .map((u) => ({
+      key: getUserKey(u),
+      name: (u?.name || "").trim(),
+      emp_code: (u?.emp_code || "").trim(),
+      department_name: (u?.department_name || "").trim(),
+      email: getUserEmail(u).trim(),
+    }))
+    .filter((u) => u.key && u.name);
+}
 
 export default function TasksPage() {
   const [tasks, setTasks] = useState([]);
@@ -40,18 +71,60 @@ export default function TasksPage() {
   const [apiFilters, setApiFilters] = useState({ status: "", search: "", overdue: "", thisWeek: "" });
   const [stats, setStats] = useState({ total: 0, pending: 0, inProgress: 0, done: 0, byDepartment: [] });
   const [showModal, setShowModal] = useState(false);
+  const [editingId, setEditingId] = useState(null);
   const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState(EMPTY_FORM);
+  const [users, setUsers] = useState([]);
+  const [assigneeSearch, setAssigneeSearch] = useState("");
+  const [selectedAssigneeKeys, setSelectedAssigneeKeys] = useState([]);
+  const [isAssigneeListOpen, setIsAssigneeListOpen] = useState(false);
+  const assigneePickerRef = useRef(null);
+  const [departments, setDepartments] = useState([]);
+  const assigneeMap = useMemo(() => {
+    const map = new Map();
+    users.forEach((u) => map.set(u.key, u));
+    return map;
+  }, [users]);
+
+  const selectedAssignees = useMemo(
+    () => selectedAssigneeKeys.map((key) => assigneeMap.get(key)).filter(Boolean),
+    [selectedAssigneeKeys, assigneeMap]
+  );
+
+  const filteredUsers = useMemo(() => {
+    const term = assigneeSearch.trim().toLowerCase();
+    if (!term) return users;
+    return users.filter((u) =>
+      `${u.name} ${u.emp_code} ${u.email} ${u.department_name}`.toLowerCase().includes(term)
+    );
+  }, [users, assigneeSearch]);
+  const availableUsers = useMemo(
+    () => filteredUsers.filter((u) => !selectedAssigneeKeys.includes(u.key)),
+    [filteredUsers, selectedAssigneeKeys]
+  );
+
+  const syncAssigneeFields = (keys) => {
+    const selected = keys.map((key) => assigneeMap.get(key)).filter(Boolean);
+    setFormData((f) => ({
+      ...f,
+      assigned_to: selected,
+      assigned_email: selected.map((u) => u.email).filter(Boolean).join(", "),
+    }));
+  };
 
   const load = async () => {
     setLoading(true);
     try {
-      const [listRes, statsRes] = await Promise.all([
+      const [listRes, statsRes, users, departments] = await Promise.all([
         api.get("/tasks", { params: { ...apiFilters, limit: 100 } }),
         api.get("/tasks/stats"),
+        fetch("https://hrms.aimantra.info/wfm/ourcompanyuserlessdetail/v3/null/null/").then(res => res.json()),
+        fetch("https://hrms.aimantra.info/wfm/department/").then(res => res.json()),
       ]);
       setTasks(listRes.data.items);
       setStats(statsRes.data);
+      setUsers(normalizeUsers(users));
+      setDepartments(departments);
     } catch (error) {
       console.error("Failed to load tasks:", error);
     } finally {
@@ -63,9 +136,55 @@ export default function TasksPage() {
     load();
   }, [apiFilters.status, apiFilters.search, apiFilters.overdue, apiFilters.thisWeek]);
 
+  useEffect(() => {
+    const handleDocumentClick = (event) => {
+      if (!assigneePickerRef.current?.contains(event.target)) {
+        setIsAssigneeListOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleDocumentClick);
+    return () => document.removeEventListener("mousedown", handleDocumentClick);
+  }, []);
+
   const closeModal = () => {
     setShowModal(false);
+    setEditingId(null);
     setFormData(EMPTY_FORM);
+    setAssigneeSearch("");
+    setSelectedAssigneeKeys([]);
+    setIsAssigneeListOpen(false);
+  };
+
+  const openCreateModal = () => {
+    setEditingId(null);
+    setFormData(EMPTY_FORM);
+    setAssigneeSearch("");
+    setSelectedAssigneeKeys([]);
+    setIsAssigneeListOpen(false);
+    setShowModal(true);
+  };
+
+  const openEditModal = (task) => {
+    const nextForm = taskToForm(task);
+    const existingAssignees = nextForm.assigned_to.map((u) => u.emp_code?.toLowerCase());
+    const matchedKeys = users
+      .filter((u) => existingAssignees.includes((u.emp_code || "").trim().toLowerCase()))
+      .map((u) => u.key);
+    setEditingId(task._id);
+    setFormData(nextForm);
+    setAssigneeSearch("");
+    setSelectedAssigneeKeys(matchedKeys);
+    setIsAssigneeListOpen(false);
+    setShowModal(true);
+  };
+
+  const handleAssigneeToggle = (key) => {
+    setSelectedAssigneeKeys((prev) => {
+      const exists = prev.includes(key);
+      const nextKeys = exists ? prev.filter((k) => k !== key) : [...prev, key];
+      syncAssigneeFields(nextKeys);
+      return nextKeys;
+    });
   };
 
   const handleSubmit = async (e) => {
@@ -74,13 +193,17 @@ export default function TasksPage() {
       alert("Please enter a task name");
       return;
     }
-    if (!formData.assigned_to.trim()) {
+    if (!formData.assigned_to?.length) {
       alert("Please enter who is working on this task");
       return;
     }
     setSaving(true);
     try {
-      await api.post("/tasks", formData);
+      if (editingId) {
+        await api.put(`/tasks/${editingId}`, formData);
+      } else {
+        await api.post("/tasks", formData);
+      }
       closeModal();
       load();
     } catch (err) {
@@ -91,10 +214,10 @@ export default function TasksPage() {
   };
 
   const statCards = [
-    { label: "Total tasks", value: stats.total, color: "text-indigo-600", bg: "bg-indigo-50 dark:bg-indigo-950/40" },
-    { label: "Pending", value: stats.pending, color: "text-amber-600", bg: "bg-amber-50 dark:bg-amber-950/40" },
-    { label: "In progress", value: stats.inProgress, color: "text-blue-600", bg: "bg-blue-50 dark:bg-blue-950/40" },
-    { label: "Done", value: stats.done, color: "text-emerald-600", bg: "bg-emerald-50 dark:bg-emerald-950/40" },
+    { label: "Total tasks", value: stats.total, color: "text-indigo-600", bg: "bg-indigo-50 dark:bg-indigo-950/40", icon: ListChecks },
+    { label: "Pending", value: stats.pending, color: "text-amber-600", bg: "bg-amber-50 dark:bg-amber-950/40", icon: Clock },
+    { label: "In progress", value: stats.inProgress, color: "text-blue-600", bg: "bg-blue-50 dark:bg-blue-950/40", icon: AlertCircle },
+    { label: "Done", value: stats.done, color: "text-emerald-600", bg: "bg-emerald-50 dark:bg-emerald-950/40", icon: CheckCircle2 },
   ];
 
   const quickFilters = [
@@ -110,7 +233,7 @@ export default function TasksPage() {
       label: "Overdue review",
       active: apiFilters.overdue === "true",
       onClick: () => setApiFilters((f) => ({ ...f, overdue: f.overdue ? "" : "true", thisWeek: "" })),
-      activeClass: "bg-red-600 text-white ring-2 ring-red-300",
+      activeClass: brand.chipDanger,
     },
   ];
 
@@ -131,7 +254,7 @@ export default function TasksPage() {
         </button>
         <button
           type="button"
-          onClick={() => setShowModal(true)}
+          onClick={openCreateModal}
           className={`inline-flex items-center gap-2 text-white rounded-xl px-5 py-2.5 text-sm font-semibold ${brand.gradient} ${brand.gradientHover} ${brand.btnRing}`}
         >
           <Plus className="h-4 w-4" />
@@ -140,17 +263,22 @@ export default function TasksPage() {
       </PageHeader>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {statCards.map((s) => (
-          <div key={s.label} className={brand.statCard}>
-            <div className="flex items-center justify-between p-4">
-              <div>
-                <p className="text-xs font-medium text-slate-500">{s.label}</p>
-                <p className="mt-1 text-2xl font-bold text-slate-900 dark:text-white">{s.value}</p>
+        {statCards.map((s) => {
+          const Icon = s.icon;
+          return (
+            <div key={s.label} className={brand.statCard}>
+              <div className="flex items-center justify-between p-4">
+                <div>
+                  <p className="text-xs font-medium text-slate-500">{s.label}</p>
+                  <p className="mt-1 text-2xl font-bold text-slate-900 dark:text-white">{s.value}</p>
+                </div>
+                <div className={`rounded-xl p-2.5 ${s.bg} ${s.color}`}>
+                  <Icon className="h-5 w-5" />
+                </div>
               </div>
-              <div className={`rounded-lg px-2 py-1 text-xs font-semibold ${s.bg} ${s.color}`}>●</div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {stats.byDepartment?.length > 0 && (
@@ -160,9 +288,8 @@ export default function TasksPage() {
               key={d._id}
               type="button"
               onClick={() => setDepartmentFilter(departmentFilter === d._id ? "" : d._id)}
-              className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
-                departmentFilter === d._id ? brand.chipActive : brand.chipInactive
-              }`}
+              className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${departmentFilter === d._id ? brand.chipActive : brand.chipInactive
+                }`}
             >
               {d._id}: {d.open} open / {d.total} total
             </button>
@@ -176,9 +303,8 @@ export default function TasksPage() {
             key={f.key}
             type="button"
             onClick={f.onClick}
-            className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
-              f.active ? f.activeClass : brand.chipInactive
-            }`}
+            className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${f.active ? f.activeClass : brand.chipInactive
+              }`}
           >
             {f.label}
           </button>
@@ -196,9 +322,8 @@ export default function TasksPage() {
       </div>
 
       {loading && tasks.length === 0 ? (
-        <div className={`flex h-48 flex-col items-center justify-center ${brand.card}`}>
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-slate-200 border-t-indigo-600" />
-          <p className="mt-3 text-sm text-slate-500">Loading tasks…</p>
+        <div className={`flex h-48 ${brand.card}`}>
+          <LoadingSpinner label="Loading tasks…" className="flex-1" />
         </div>
       ) : (
         <TaskTable
@@ -206,15 +331,16 @@ export default function TasksPage() {
           reload={load}
           departmentFilter={departmentFilter}
           onDepartmentFilter={setDepartmentFilter}
+          onEditTask={openEditModal}
         />
       )}
 
       <FormModal
         open={showModal}
         onClose={closeModal}
-        eyebrow="New Task"
-        title="Add department task"
-        subtitle="Assign an owner and schedule the next weekly review."
+        eyebrow={editingId ? "Edit Task" : "New Task"}
+        title={editingId ? "Update department task" : "Add department task"}
+        subtitle={editingId ? "Modify task details and review schedule." : "Assign an owner and schedule the next weekly review."}
         badges={[
           formData.department && {
             key: "dept",
@@ -237,7 +363,7 @@ export default function TasksPage() {
               disabled={saving}
               className={`flex-1 rounded-xl py-2.5 text-sm font-semibold disabled:opacity-50 ${brand.gradient} ${brand.gradientHover}`}
             >
-              {saving ? "Saving…" : "Create Task"}
+              {saving ? "Saving…" : editingId ? "Save Changes" : "Create Task"}
             </button>
           </>
         }
@@ -273,7 +399,7 @@ export default function TasksPage() {
           </FormSection>
 
           <FormSection title="Assignment" icon={User}>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3">
               <div>
                 <FieldLabel required>Department</FieldLabel>
                 <select
@@ -282,34 +408,102 @@ export default function TasksPage() {
                   onChange={(e) => setFormData((f) => ({ ...f, department: e.target.value }))}
                   className={fieldClass}
                 >
-                  {DEPARTMENTS.map((d) => (
-                    <option key={d} value={d}>
-                      {d}
+                  {departments.map((d) => (
+                    <option key={d.title} value={d.title}>
+                      {d.title}
                     </option>
                   ))}
                 </select>
               </div>
-              <div>
-                <FieldLabel required>Assigned to</FieldLabel>
+              <div ref={assigneePickerRef}>
+                {selectedAssignees.length > 0 && (
+                  <div className="mt-2 mb-3 rounded-xl border border-indigo-200 bg-indigo-50/60 p-2.5 dark:border-indigo-700 dark:bg-indigo-900/20">
+                    <div className="mb-2 flex items-center justify-between">
+                      <p className="text-xs font-semibold text-indigo-700 dark:text-indigo-200">
+                        Selected ({selectedAssignees.length})
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedAssigneeKeys([]);
+                          setFormData((f) => ({ ...f, assigned_to: [] }));
+                        }}
+                        className="text-xs font-semibold text-indigo-700 hover:underline dark:text-indigo-200"
+                      >
+                        Clear all
+                      </button>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {selectedAssignees.map((u) => (
+                        <button
+                          key={u.key}
+                          type="button"
+                          onClick={() => handleAssigneeToggle(u.key)}
+                          className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-slate-700 ring-1 ring-slate-200 transition hover:bg-rose-50 hover:text-rose-700 hover:ring-rose-200 dark:bg-slate-800 dark:text-slate-200 dark:ring-slate-700 dark:hover:bg-rose-950/40 dark:hover:text-rose-200 dark:hover:ring-rose-800"
+                          title="Remove assignee"
+                        >
+                          {u.name} {u.emp_code ? `(${u.emp_code})` : ""} x
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <FieldLabel required>Assigned to (multiple)</FieldLabel>
                 <input
-                  name="assigned_to"
-                  value={formData.assigned_to}
-                  onChange={(e) => setFormData((f) => ({ ...f, assigned_to: e.target.value }))}
+                  type="text"
+                  value={assigneeSearch}
+                  onFocus={() => setIsAssigneeListOpen(true)}
+                  onChange={(e) => {
+                    setAssigneeSearch(e.target.value);
+                    setIsAssigneeListOpen(true);
+                  }}
                   className={fieldClass}
-                  placeholder="Person working on task"
-                  required
+                  placeholder="Search by name, emp code, department"
                 />
+                {isAssigneeListOpen && (
+                  <div className="mt-2 max-h-52 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
+                    {availableUsers.length === 0 ? (
+                      <p className="px-3 py-3 text-xs text-slate-500 dark:text-slate-400">
+                        {selectedAssignees.length > 0 ? "All matching users already selected" : "No users found"}
+                      </p>
+                    ) : (
+                      availableUsers.map((u) => {
+                        return (
+                          <label
+                            key={u.key}
+                            className="flex cursor-pointer items-start gap-3 border-b border-slate-100 px-3 py-2.5 text-sm transition hover:bg-indigo-50/60 last:border-b-0 dark:border-slate-800 dark:hover:bg-slate-800/80"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={false}
+                              onChange={() => handleAssigneeToggle(u.key)}
+                              className="mt-0.5 opacity-0 h-4 w-0 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                            />
+                            <div className="min-w-0 leading-5 text-slate-700 dark:text-slate-200">
+                              <p className="truncate font-medium">{u.name}</p>
+                              <p className="truncate text-xs text-slate-500 dark:text-slate-400">
+                                {u.emp_code || "No code"} {u.department_name ? `| ${u.department_name}` : ""}
+                                {u.email ? ` | ${u.email}` : ""}
+                              </p>
+                            </div>
+                          </label>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
+                <input type="hidden" name="assigned_to" value={JSON.stringify(formData.assigned_to)} />
               </div>
             </div>
             <div>
               <FieldLabel>Assignee email</FieldLabel>
               <input
-                type="email"
+                type="text"
                 name="assigned_email"
-                value={formData.assigned_email}
-                onChange={(e) => setFormData((f) => ({ ...f, assigned_email: e.target.value }))}
+                disabled={true}
+                value={formData.assigned_to.map((u) => u.email).filter(Boolean).join(", ")}
                 className={fieldClass}
-                placeholder="email@company.com (for alerts)"
+                placeholder="Auto-filled from selected assignees"
               />
             </div>
           </FormSection>

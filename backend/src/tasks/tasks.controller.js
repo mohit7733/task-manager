@@ -107,31 +107,37 @@ async function createTask(req, res) {
   const body = req.body;
   if (!body.title?.trim()) return res.status(400).json({ message: "Task title is required" });
   if (!body.department) return res.status(400).json({ message: "Department is required" });
-  if (!body.assigned_to?.trim()) return res.status(400).json({ message: "Assigned person is required" });
+  if (!body.assigned_to.length) return res.status(400).json({ message: "Assigned person is required" });
 
   const task = await Task.create({
     ...body,
     title: body.title.trim(),
-    assigned_to: body.assigned_to.trim(),
-    assigned_email: body.assigned_email?.trim() || undefined,
+    assigned_to: body.assigned_to,
+    // assigned_email: body.assigned_email?.trim() || undefined,
     created_by: req.user._id,
     coo_id: body.coo_id || req.user.coo_id,
     task_create_date: body.task_create_date || new Date()
   });
-  sendTaskAssignedEmail(task, req.user).catch(() => {});
+  await Promise.all(body.assigned_to.map(async (u) => {
+    await sendTaskAssignedEmail(task, { email: u.email, name: u.name }, req.user).catch(() => { });
+  }));
   res.status(201).json(task);
 }
 
 async function updateTask(req, res) {
   const update = { ...req.body };
   if (update.title) update.title = update.title.trim();
-  if (update.assigned_to) update.assigned_to = update.assigned_to.trim();
   const task = await Task.findOneAndUpdate(
     { _id: req.params.id, coo_id: req.user.coo_id },
     update,
-    { new: true }
+    { returnDocument: "after" }
   );
   if (!task) return res.status(404).json({ message: "Task not found" });
+  if (update.assigned_to?.length) {
+    await Promise.all(update.assigned_to.map(async (u) => {
+      await sendTaskAssignedEmail(task, { email: u.email, name: u.name }, req.user).catch(() => { });
+    }));
+  }
   res.json(task);
 }
 
@@ -151,9 +157,9 @@ async function addTaskRemark(req, res) {
   if (!task) return res.status(404).json({ message: "Task not found" });
 
   const isCompleted = req.body.mark_completed === true || req.body.mark_completed === "true";
-  if (!req.body.remark_description?.trim()) {
-    return res.status(400).json({ message: "Meeting discussion / remark is required" });
-  }
+  // if (!req.body.remark_description?.trim()) {
+  //   return res.status(400).json({ message: "Meeting discussion / remark is required" });
+  // }
 
   if (isCompleted) {
     if (!req.body.completion_note?.trim()) {
@@ -170,7 +176,7 @@ async function addTaskRemark(req, res) {
     remark_number: count + 1,
     remark_date: req.body.remark_date || new Date(),
     meeting_date: req.body.meeting_date || req.body.remark_date || new Date(),
-    remark_description: req.body.remark_description.trim(),
+    remark_description: req.body.remark_description?.trim() || undefined,
     attachment: req.file ? `/uploads/${req.file.filename}` : undefined,
     created_by: req.user._id
   };
@@ -192,13 +198,103 @@ async function addTaskRemark(req, res) {
 
   const remark = await TaskRemark.create(remarkData);
   await task.save();
-  sendTaskRemarkEmail(task, remark, req.user).catch(() => {});
+  sendTaskRemarkEmail(task, remark, req.user).catch(() => { });
   res.status(201).json(remark);
 }
 
 async function getRemarksByTask(req, res) {
   const remarks = await TaskRemark.find({ task_id: req.params.taskId }).sort({ remark_number: 1 });
   res.json(remarks);
+}
+
+async function syncTaskFromRemarks(task) {
+  const remarks = await TaskRemark.find({ task_id: task._id }).sort({ remark_number: 1 });
+  if (remarks.length === 0) return;
+  const last = remarks[remarks.length - 1];
+  if (last.status_after === "Done") {
+    task.status = "Done";
+    task.final_outcome = last.completion_note || task.final_outcome;
+    task.latest_pending_reason = "";
+  } else {
+    task.status = last.status_after || task.status;
+    task.latest_pending_reason = last.pending_reason || "";
+    if (last.next_review_date) task.next_review_date = last.next_review_date;
+  }
+  await task.save();
+}
+
+async function updateTaskRemark(req, res) {
+  const remark = await TaskRemark.findById(req.params.id);
+  if (!remark) return res.status(404).json({ message: "Remark not found" });
+  const task = await Task.findOne({ _id: remark.task_id, coo_id: req.user.coo_id });
+  if (!task) return res.status(404).json({ message: "Task not found" });
+
+  const isCompleted = req.body.mark_completed === true || req.body.mark_completed === "true";
+
+  // if (req.body.remark_description !== undefined) {
+  //   remark.remark_description = req.body.remark_description.trim();
+  // }
+  // if (!remark.remark_description) {
+  //   return res.status(400).json({ message: "Remark description is required" });
+  // }
+  if (req.file) remark.attachment = `/uploads/${req.file.filename}`;
+  if (req.body.meeting_date) remark.meeting_date = req.body.meeting_date;
+
+  const latest = await TaskRemark.findOne({ task_id: task._id }).sort({ remark_number: -1 });
+  const isLatest = latest && String(latest._id) === String(remark._id);
+
+  if (isCompleted) {
+    if (!req.body.completion_note?.trim()) {
+      return res.status(400).json({ message: "Completion note is required to mark task as done" });
+    }
+    remark.completion_note = req.body.completion_note.trim();
+    remark.pending_reason = undefined;
+    remark.next_review_date = undefined;
+    remark.status_after = "Done";
+    if (isLatest) {
+      task.status = "Done";
+      task.final_outcome = req.body.completion_note.trim();
+      task.latest_pending_reason = "";
+    }
+  } else {
+    if (!req.body.pending_reason?.trim()) {
+      return res.status(400).json({ message: "Pending reason is required when task is not done" });
+    }
+    remark.pending_reason = req.body.pending_reason.trim();
+    remark.completion_note = undefined;
+    remark.status_after = req.body.status || remark.status_after || "Pending";
+    if (req.body.next_review_date !== undefined) remark.next_review_date = req.body.next_review_date;
+    if (isLatest) {
+      task.status = remark.status_after;
+      task.latest_pending_reason = remark.pending_reason;
+      if (remark.next_review_date) task.next_review_date = remark.next_review_date;
+      task.final_outcome = "";
+    }
+  }
+
+  await remark.save();
+  if (isLatest) await task.save();
+  res.json(remark);
+}
+
+async function deleteTaskRemark(req, res) {
+  const remark = await TaskRemark.findById(req.params.id);
+  if (!remark) return res.status(404).json({ message: "Remark not found" });
+  const task = await Task.findOne({ _id: remark.task_id, coo_id: req.user.coo_id });
+  if (!task) return res.status(404).json({ message: "Task not found" });
+
+  await TaskRemark.deleteOne({ _id: remark._id });
+
+  const remaining = await TaskRemark.find({ task_id: task._id }).sort({ remark_number: 1 });
+  for (let i = 0; i < remaining.length; i++) {
+    remaining[i].remark_number = i + 1;
+    await remaining[i].save();
+  }
+
+  if (remaining.length > 0) {
+    await syncTaskFromRemarks(task);
+  }
+  res.json({ success: true });
 }
 
 async function removeTask(req, res) {
@@ -305,6 +401,8 @@ module.exports = {
   getTaskTimeline,
   addTaskRemark,
   getRemarksByTask,
+  updateTaskRemark,
+  deleteTaskRemark,
   removeTask,
   getTaskCalendarEvents
 };

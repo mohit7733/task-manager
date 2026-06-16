@@ -3,12 +3,37 @@ const Meeting = require("./meeting.model");
 const Remark = require("../remarks/remark.model");
 const { sendMeetingAssignedEmail, sendEmail } = require("../shared/emailService");
 
+function parseResponsiblePerson(value) {
+  if (!value) return [];
+  if (Array.isArray(value)) return value;
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+function responsiblePersonLabel(value) {
+  if (Array.isArray(value)) return value.map((u) => u.name).filter(Boolean).join(", ");
+  return value || "";
+}
+
 function buildFilter(query, user) {
   const filter = { coo_id: user.coo_id };
   if (query.status) filter.status = query.status;
   if (query.meeting_type) filter.meeting_type = query.meeting_type;
   if (query.priority) filter.priority = query.priority;
-  if (query.search) filter.$or = [{ title: new RegExp(query.search, "i") }, { discussion_topic: new RegExp(query.search, "i") }];
+  if (query.search) {
+    filter.$or = [
+      { title: new RegExp(query.search, "i") },
+      { discussion_topic: new RegExp(query.search, "i") },
+      { "responsible_person.name": new RegExp(query.search, "i") }
+    ];
+  }
   if (query.overdue === "true") filter.meeting_date = { $lt: startOfDay(new Date()) };
   if (query.thisWeek === "true") filter.meeting_date = { $gte: startOfDay(new Date()), $lte: addDays(startOfDay(new Date()), 7) };
   return filter;
@@ -98,6 +123,11 @@ async function listMeetings(req, res) {
 
 async function createMeeting(req, res) {
   const body = req.body;
+  const responsiblePerson = parseResponsiblePerson(body.responsible_person);
+  if (!responsiblePerson.length) {
+    return res.status(400).json({ message: "Responsible person is required" });
+  }
+
   const meetingDate = body.meeting_date || new Date();
   const meeting = await Meeting.create({
     ...body,
@@ -106,10 +136,13 @@ async function createMeeting(req, res) {
     task_create_date: body.task_create_date || new Date(),
     initial_meeting_date: body.initial_meeting_date || meetingDate,
     meeting_date: meetingDate,
+    meeting_link: body.meeting_link?.trim() || undefined,
     attachment: req.file ? `/uploads/${req.file.filename}` : body.attachment,
-    responsible_email: body.responsible_email?.trim() || undefined
+    responsible_person: responsiblePerson
   });
-  sendMeetingAssignedEmail(meeting, req.user).catch(() => { });
+  await Promise.all(responsiblePerson.map(async (u) => {
+    await sendMeetingAssignedEmail(meeting, { email: u.email, name: u.name }, req.user).catch(() => { });
+  }));
   res.status(201).json(meeting);
 }
 
@@ -166,7 +199,7 @@ async function getCalendarEvents(req, res) {
       status: m.status,
       priority: m.priority,
       meeting_type: m.meeting_type,
-      responsible_person: m.responsible_person,
+      responsible_person: responsiblePersonLabel(m.responsible_person),
       discussion_topic: m.discussion_topic,
       description: m.description,
       final_outcome: m.final_outcome,
@@ -255,9 +288,18 @@ async function getCalendarEvents(req, res) {
 
 async function updateMeeting(req, res) {
   const update = { ...req.body };
+  if (req.body.meeting_link) update.meeting_link = req.body.meeting_link.trim();
   if (req.file) update.attachment = `/uploads/${req.file.filename}`;
+  if (update.responsible_person !== undefined) {
+    update.responsible_person = parseResponsiblePerson(update.responsible_person);
+  }
   const meeting = await Meeting.findOneAndUpdate({ _id: req.params.id, coo_id: req.user.coo_id }, update, { new: true });
   if (!meeting) return res.status(404).json({ message: "Meeting not found" });
+  if (update.responsible_person?.length) {
+    await Promise.all(update.responsible_person.map(async (u) => {
+      await sendMeetingAssignedEmail(meeting, { email: u.email, name: u.name }, req.user).catch(() => { });
+    }));
+  }
   res.json(meeting);
 }
 

@@ -5,8 +5,12 @@ import autoTable from "jspdf-autotable";
 import { useDispatch, useSelector } from "react-redux";
 import { addQuickNote, updateQuickNote, removeQuickNote, toggleTheme } from "../store/store";
 import PageHeader from "../components/PageHeader";
+import LoadingSpinner from "../components/LoadingSpinner";
+import EmptyState from "../components/EmptyState";
+import { FieldLabel, fieldClass } from "../components/FormModal";
 import { APP_NAME, APP_TAGLINE, APP_VERSION, brand } from "../utils/theme";
 import api from "../api/client";
+import { formatResponsiblePerson } from "../utils/format";
 import {
   FileSpreadsheet,
   FileText,
@@ -26,7 +30,8 @@ import {
   Mail,
   BarChart3,
   PieChart,
-  Activity
+  Activity,
+  GitBranch,
 } from "lucide-react";
 import {
   LineChart,
@@ -81,107 +86,106 @@ export function FollowupsPage() {
 
   const getStatusColor = (status) => {
     switch (status) {
-      case "Completed": return "text-emerald-600 bg-emerald-50";
-      case "In Progress": return "text-blue-600 bg-blue-50";
-      case "Pending": return "text-amber-600 bg-amber-50";
-      default: return "text-gray-600 bg-gray-50";
+      case "Completed":
+        return "text-emerald-700 bg-emerald-50 dark:bg-emerald-950/40 dark:text-emerald-300";
+      case "In Progress":
+        return "text-blue-700 bg-blue-50 dark:bg-blue-950/40 dark:text-blue-300";
+      case "Pending":
+        return "text-amber-700 bg-amber-50 dark:bg-amber-950/40 dark:text-amber-300";
+      default:
+        return "text-slate-700 bg-slate-50 dark:bg-slate-800 dark:text-slate-300";
     }
   };
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-800">Followup Chain</h2>
-          <p className="text-sm text-gray-500 mt-1">Track meeting followups from start to completion</p>
-        </div>
-        <div className="flex gap-2">
-          <button
-            onClick={() => setFilter("all")}
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${filter === "all" ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-              }`}
-          >
-            All ({followups.length})
-          </button>
-          <button
-            onClick={() => setFilter("pending")}
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${filter === "pending" ? "bg-amber-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-              }`}
-          >
-            Pending ({followups.filter(f => f.isPending).length})
-          </button>
-          <button
-            onClick={() => setFilter("overdue")}
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${filter === "overdue" ? "bg-red-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-              }`}
-          >
-            Overdue ({followups.filter(f => f.isOverdue).length})
-          </button>
-        </div>
+      <PageHeader
+        title="Followup Chain"
+        subtitle="Track meeting followups from start to completion"
+        icon={GitBranch}
+      >
+        <button
+          type="button"
+          onClick={() => setFilter("all")}
+          className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+            filter === "all" ? brand.chipActive : brand.chipInactive
+          }`}
+        >
+          All ({followups.length})
+        </button>
+        <button
+          type="button"
+          onClick={() => setFilter("pending")}
+          className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+            filter === "pending" ? brand.chipWarning : brand.chipInactive
+          }`}
+        >
+          Pending ({followups.filter((f) => f.isPending).length})
+        </button>
+        <button
+          type="button"
+          onClick={() => setFilter("overdue")}
+          className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+            filter === "overdue" ? brand.chipDanger : brand.chipInactive
+          }`}
+        >
+          Overdue ({followups.filter((f) => f.isOverdue).length})
+        </button>
+      </PageHeader>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {[
+          { label: "Total Followups", value: followups.length, icon: Activity, color: "text-indigo-600", bg: "bg-indigo-50 dark:bg-indigo-950/40" },
+          {
+            label: "Avg. Followups/Meeting",
+            value: (followups.reduce((sum, f) => sum + f.remarkCount, 0) / followups.length || 0).toFixed(1),
+            icon: TrendingUp,
+            color: "text-violet-600",
+            bg: "bg-violet-50 dark:bg-violet-950/40",
+          },
+          {
+            label: "Completion Rate",
+            value: `${((followups.filter((f) => f.status === "Completed").length / followups.length) * 100 || 0).toFixed(0)}%`,
+            icon: CheckCircle,
+            color: "text-emerald-600",
+            bg: "bg-emerald-50 dark:bg-emerald-950/40",
+          },
+          {
+            label: "Overdue Items",
+            value: followups.filter((f) => f.isOverdue).length,
+            icon: AlertCircle,
+            color: "text-red-600",
+            bg: "bg-red-50 dark:bg-red-950/40",
+          },
+        ].map((stat) => {
+          const Icon = stat.icon;
+          return (
+            <div key={stat.label} className={brand.statCard}>
+              <div className="flex items-center justify-between p-4">
+                <div>
+                  <p className="text-xs font-medium text-slate-500">{stat.label}</p>
+                  <p className={`mt-1 text-2xl font-bold ${stat.color}`}>{stat.value}</p>
+                </div>
+                <div className={`rounded-xl p-2.5 ${stat.bg} ${stat.color}`}>
+                  <Icon className="h-5 w-5" />
+                </div>
+              </div>
+            </div>
+          );
+        })}
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs text-gray-500">Total Followups</p>
-              <p className="text-2xl font-bold text-gray-800">{followups.length}</p>
-            </div>
-            <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
-              <Activity className="h-5 w-5 text-blue-600" />
-            </div>
-          </div>
-        </div>
-        <div className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs text-gray-500">Avg. Followups/Meeting</p>
-              <p className="text-2xl font-bold text-gray-800">
-                {(followups.reduce((sum, f) => sum + f.remarkCount, 0) / followups.length || 0).toFixed(1)}
-              </p>
-            </div>
-            <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center">
-              <TrendingUp className="h-5 w-5 text-purple-600" />
-            </div>
-          </div>
-        </div>
-        <div className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs text-gray-500">Completion Rate</p>
-              <p className="text-2xl font-bold text-emerald-600">
-                {((followups.filter(f => f.status === "Completed").length / followups.length) * 100 || 0).toFixed(0)}%
-              </p>
-            </div>
-            <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center">
-              <CheckCircle className="h-5 w-5 text-emerald-600" />
-            </div>
-          </div>
-        </div>
-        <div className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs text-gray-500">Overdue Items</p>
-              <p className="text-2xl font-bold text-red-600">{followups.filter(f => f.isOverdue).length}</p>
-            </div>
-            <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
-              <AlertCircle className="h-5 w-5 text-red-600" />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="overflow-auto rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
+      <div className={`overflow-auto ${brand.tableWrap}`}>
         {loading ? (
-          <p className="p-8 text-center text-gray-500">Loading followups…</p>
+          <LoadingSpinner label="Loading followups…" className="p-8" />
+        ) : filteredFollowups.length === 0 ? (
+          <EmptyState bare compact icon={GitBranch} title="No followups match this filter" />
         ) : (
           <table className="excel-table w-full min-w-[1100px] border-collapse text-xs">
-            <thead className="sticky top-0 bg-slate-100 dark:bg-slate-800">
+            <thead className={brand.tableHead}>
               <tr>
                 {["Title", "Status", "Remarks", "Last Remark", "Next Meeting", "Followup Note", "Responsible", "Priority", "Overdue"].map((h) => (
-                  <th key={h} className="border border-gray-300 px-2 py-2 text-left font-semibold dark:border-gray-600">
+                  <th key={h} className={brand.tableHeadCell}>
                     {h}
                   </th>
                 ))}
@@ -189,22 +193,22 @@ export function FollowupsPage() {
             </thead>
             <tbody>
               {filteredFollowups.map((f) => (
-                <tr key={f._id} className={f.isOverdue ? "bg-red-50/50" : ""}>
-                  <td className="border border-gray-200 px-2 py-1.5 font-medium dark:border-gray-700">{f.title}</td>
-                  <td className={`border border-gray-200 px-2 py-1.5 dark:border-gray-700 ${getStatusColor(f.status)}`}>{f.status}</td>
-                  <td className="border border-gray-200 px-2 py-1.5 text-center font-bold text-indigo-600 dark:border-gray-700">{f.remarkCount}</td>
-                  <td className="max-w-[200px] border border-gray-200 px-2 py-1.5 dark:border-gray-700">{f.lastRemark?.remark_description || "—"}</td>
-                  <td className="border border-gray-200 px-2 py-1.5 dark:border-gray-700">
+                <tr key={f._id} className={f.isOverdue ? "bg-red-50/50 dark:bg-red-950/20" : brand.rowHover}>
+                  <td className={`${brand.tableCell} font-medium`}>{f.title}</td>
+                  <td className={`${brand.tableCell} ${getStatusColor(f.status)}`}>{f.status}</td>
+                  <td className={`${brand.tableCell} text-center font-bold text-indigo-600`}>{f.remarkCount}</td>
+                  <td className={`max-w-[200px] ${brand.tableCell}`}>{f.lastRemark?.remark_description || "—"}</td>
+                  <td className={brand.tableCell}>
                     {f.lastRemark?.next_meeting_date
                       ? new Date(f.lastRemark.next_meeting_date).toLocaleDateString()
                       : f.meeting_date
                         ? new Date(f.meeting_date).toLocaleDateString()
                         : "—"}
                   </td>
-                  <td className="border border-gray-200 px-2 py-1.5 dark:border-gray-700">{f.lastRemark?.next_followup_note || "—"}</td>
-                  <td className="border border-gray-200 px-2 py-1.5 dark:border-gray-700">{f.responsible_person || "—"}</td>
-                  <td className="border border-gray-200 px-2 py-1.5 dark:border-gray-700">{f.priority}</td>
-                  <td className="border border-gray-200 px-2 py-1.5 dark:border-gray-700">{f.isOverdue ? "Yes" : "No"}</td>
+                  <td className={brand.tableCell}>{f.lastRemark?.next_followup_note || "—"}</td>
+                  <td className={brand.tableCell}>{formatResponsiblePerson(f.responsible_person) || "—"}</td>
+                  <td className={brand.tableCell}>{f.priority}</td>
+                  <td className={brand.tableCell}>{f.isOverdue ? "Yes" : "No"}</td>
                 </tr>
               ))}
             </tbody>
@@ -301,7 +305,7 @@ export function ReportsPage() {
           m.meeting_date?.slice(0, 10) || "-",
           m.status,
           m.priority || "Medium",
-          m.responsible_person || "-"
+          formatResponsiblePerson(m.responsible_person) || "-"
         ]),
         startY: 45,
         theme: 'striped',
@@ -321,46 +325,44 @@ export function ReportsPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-800">Analytics & Reports</h2>
-          <p className="text-sm text-gray-500 mt-1">Comprehensive insights into your meeting performance</p>
-        </div>
-        <div className="flex gap-2">
-          <button
-            onClick={exportExcel}
-            disabled={loading}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl transition-all text-sm font-medium disabled:opacity-50"
-          >
-            <FileSpreadsheet className="h-4 w-4" />
-            Export Excel
-          </button>
-          <button
-            onClick={exportPDF}
-            disabled={loading}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl transition-all text-sm font-medium disabled:opacity-50"
-          >
-            <FileText className="h-4 w-4" />
-            Export PDF
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        title="Analytics & Reports"
+        subtitle="Comprehensive insights into your meeting performance"
+        icon={BarChart3}
+      >
+        <button
+          type="button"
+          onClick={exportExcel}
+          disabled={loading}
+          className={`${brand.btnPrimary} ${brand.btnSuccess}`}
+        >
+          <FileSpreadsheet className="h-4 w-4" />
+          Export Excel
+        </button>
+        <button
+          type="button"
+          onClick={exportPDF}
+          disabled={loading}
+          className={`${brand.btnPrimary} ${brand.btnDanger}`}
+        >
+          <FileText className="h-4 w-4" />
+          Export PDF
+        </button>
+      </PageHeader>
 
-      {/* Report Type Tabs */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-1 flex gap-1">
+      <div className={`${brand.tabGroup} gap-1`}>
         {[
           { id: "summary", label: "Summary", icon: BarChart3 },
           { id: "status", label: "Status Analysis", icon: PieChart },
-          { id: "priority", label: "Priority Analysis", icon: Activity }
+          { id: "priority", label: "Priority Analysis", icon: Activity },
         ].map((type) => (
           <button
             key={type.id}
+            type="button"
             onClick={() => setReportType(type.id)}
-            className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg transition-all text-sm font-medium ${reportType === type.id
-              ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md"
-              : "text-gray-600 hover:bg-gray-50"
-              }`}
+            className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition ${
+              reportType === type.id ? brand.tabActive : brand.tabInactive
+            }`}
           >
             <type.icon className="h-4 w-4" />
             {type.label}
@@ -368,12 +370,11 @@ export function ReportsPage() {
         ))}
       </div>
 
-      {/* Stats Overview */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm">
-          <p className="text-xs text-gray-500">Total Meetings</p>
-          <p className="text-2xl font-bold text-gray-800">{meetings.length}</p>
-          <p className="text-xs text-slate-400 mt-1">All recorded meetings</p>
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <div className={`${brand.statCard} p-4`}>
+          <p className="text-xs text-slate-500">Total Meetings</p>
+          <p className="text-2xl font-bold text-slate-900 dark:text-white">{meetings.length}</p>
+          <p className="mt-1 text-xs text-slate-400">All recorded meetings</p>
         </div>
         <div className={`${brand.statCard} p-4`}>
           <p className="text-xs text-slate-500">Completion Rate</p>
@@ -396,11 +397,12 @@ export function ReportsPage() {
         </div>
       </div>
 
-      {/* Charts based on selected report type */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-        {reportType === "summary" && (
+      <div className={`${brand.card} p-6`}>
+        {loading ? (
+          <LoadingSpinner label="Loading report data…" className="py-16" />
+        ) : reportType === "summary" ? (
           <div>
-            <h3 className="text-lg font-semibold text-gray-800 mb-4">Meeting Trends</h3>
+            <h3 className="mb-4 text-lg font-semibold text-slate-900 dark:text-white">Meeting Trends</h3>
             <ResponsiveContainer width="100%" height={400}>
               <BarChart data={Object.entries(chartData.monthlyData || {}).map(([month, count]) => ({ month, count }))}>
                 <CartesianGrid strokeDasharray="3 3" />
@@ -412,11 +414,9 @@ export function ReportsPage() {
               </BarChart>
             </ResponsiveContainer>
           </div>
-        )}
-
-        {reportType === "status" && (
+        ) : reportType === "status" ? (
           <div>
-            <h3 className="text-lg font-semibold text-gray-800 mb-4">Status Distribution</h3>
+            <h3 className="mb-4 text-lg font-semibold text-slate-900 dark:text-white">Status Distribution</h3>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               <ResponsiveContainer width="100%" height={300}>
                 <RePieChart>
@@ -439,22 +439,20 @@ export function ReportsPage() {
               </ResponsiveContainer>
               <div className="space-y-3">
                 {Object.entries(chartData.statusCount || {}).map(([status, count]) => (
-                  <div key={status} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                    <span className="text-sm font-medium text-gray-700">{status}</span>
+                  <div key={status} className="flex items-center justify-between rounded-xl bg-slate-50 p-3 dark:bg-slate-800/50">
+                    <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{status}</span>
                     <div className="flex items-center gap-3">
-                      <span className="text-2xl font-bold text-gray-900">{count}</span>
-                      <span className="text-sm text-gray-500">{((count / meetings.length) * 100).toFixed(1)}%</span>
+                      <span className="text-2xl font-bold text-slate-900 dark:text-white">{count}</span>
+                      <span className="text-sm text-slate-500">{((count / meetings.length) * 100).toFixed(1)}%</span>
                     </div>
                   </div>
                 ))}
               </div>
             </div>
           </div>
-        )}
-
-        {reportType === "priority" && (
+        ) : (
           <div>
-            <h3 className="text-lg font-semibold text-gray-800 mb-4">Priority Distribution</h3>
+            <h3 className="mb-4 text-lg font-semibold text-slate-900 dark:text-white">Priority Distribution</h3>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               <ResponsiveContainer width="100%" height={300}>
                 <RePieChart>
@@ -477,11 +475,11 @@ export function ReportsPage() {
               </ResponsiveContainer>
               <div className="space-y-3">
                 {Object.entries(chartData.priorityCount || {}).map(([priority, count]) => (
-                  <div key={priority} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                    <span className="text-sm font-medium text-gray-700">{priority}</span>
+                  <div key={priority} className="flex items-center justify-between rounded-xl bg-slate-50 p-3 dark:bg-slate-800/50">
+                    <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{priority}</span>
                     <div className="flex items-center gap-3">
-                      <span className="text-2xl font-bold text-gray-900">{count}</span>
-                      <span className="text-sm text-gray-500">{((count / meetings.length) * 100).toFixed(1)}%</span>
+                      <span className="text-2xl font-bold text-slate-900 dark:text-white">{count}</span>
+                      <span className="text-sm text-slate-500">{((count / meetings.length) * 100).toFixed(1)}%</span>
                     </div>
                   </div>
                 ))}
@@ -562,98 +560,87 @@ export function SettingsPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h2 className="text-2xl font-bold text-gray-800">Settings</h2>
-        <p className="text-sm text-gray-500 mt-1">Manage your preferences and quick notes</p>
-      </div>
+      <PageHeader title="Settings" subtitle="Manage your preferences and quick notes" icon={Save} />
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Quick Notes Section */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2">
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100">
-            <div className="p-6 border-b border-gray-100">
-              <h3 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
-                <Save className="h-5 w-5 text-blue-600" />
+          <div className={brand.card}>
+            <div className={brand.cardHeader}>
+              <h3 className={`flex items-center gap-2 font-semibold text-slate-900 dark:text-white`}>
+                <Save className={`h-5 w-5 ${brand.text}`} />
                 Quick Notes
               </h3>
-              <p className="text-sm text-gray-500 mt-1">Store and manage your daily notes and reminders</p>
+              <p className={`mt-1 ${brand.pageSubtitle}`}>Store and manage your daily notes and reminders</p>
             </div>
 
             <div className="p-6">
-              {/* Add Note Input */}
-              <div className="flex gap-2 mb-6">
+              <div className="mb-6 flex gap-2">
                 <input
                   type="text"
-                  className="flex-1 rounded-xl border border-gray-200 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className={`flex-1 ${fieldClass}`}
                   placeholder="Write a quick note..."
                   value={note}
                   onChange={(e) => setNote(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && addNote()}
+                  onKeyDown={(e) => e.key === "Enter" && addNote()}
                 />
                 <button
+                  type="button"
                   onClick={addNote}
-                  className="px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl transition-all text-sm font-medium inline-flex items-center gap-2"
+                  className={`${brand.btnPrimary} ${brand.gradient} ${brand.gradientHover}`}
                 >
                   <Plus className="h-4 w-4" />
                   Add Note
                 </button>
               </div>
 
-              {/* Notes List */}
-              <div className="space-y-2 max-h-[500px] overflow-y-auto">
+              <div className="max-h-[500px] space-y-2 overflow-y-auto">
                 {notes.length === 0 ? (
-                  <div className="text-center py-12">
-                    <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-4">
-                      <Save className="h-8 w-8 text-gray-400" />
-                    </div>
-                    <p className="text-gray-500">No notes yet</p>
-                    <p className="text-sm text-gray-400 mt-1">Add your first quick note above</p>
-                  </div>
+                  <EmptyState bare compact icon={Save} title="No notes yet" description="Add your first quick note above" />
                 ) : (
                   notes.map((n, i) => (
-                    <div key={`${n}-${i}`} className="group bg-gray-50 rounded-xl p-4 hover:bg-gray-100 transition-all">
+                    <div
+                      key={`${n}-${i}`}
+                      className="group rounded-xl bg-slate-50 p-4 transition hover:bg-slate-100 dark:bg-slate-800/50 dark:hover:bg-slate-800"
+                    >
                       {editingIndex === i ? (
                         <div className="flex gap-2">
                           <input
                             type="text"
                             value={editingNote}
                             onChange={(e) => setEditingNote(e.target.value)}
-                            className="flex-1 rounded-lg border border-gray-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className={`flex-1 ${fieldClass}`}
                             autoFocus
                           />
                           <button
+                            type="button"
                             onClick={saveEdit}
-                            className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-sm hover:bg-emerald-700 transition-colors"
+                            className={`rounded-xl px-3 py-1.5 text-sm ${brand.btnSuccess}`}
                           >
                             Save
                           </button>
-                          <button
-                            onClick={() => setEditingIndex(null)}
-                            className="px-3 py-1.5 bg-gray-200 text-gray-700 rounded-lg text-sm hover:bg-gray-300 transition-colors"
-                          >
+                          <button type="button" onClick={() => setEditingIndex(null)} className={brand.btnSecondary}>
                             Cancel
                           </button>
                         </div>
                       ) : (
                         <div className="flex items-start justify-between">
                           <div className="flex-1">
-                            <p className="text-gray-800">{n}</p>
-                            <p className="text-xs text-gray-400 mt-1">
-                              Added {new Date().toLocaleDateString()}
-                            </p>
+                            <p className="text-slate-800 dark:text-slate-200">{n}</p>
+                            <p className="mt-1 text-xs text-slate-400">Added {new Date().toLocaleDateString()}</p>
                           </div>
-                          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
                             <button
+                              type="button"
                               onClick={() => startEdit(i, n)}
-                              className="p-1.5 hover:bg-gray-200 rounded-lg transition-colors"
+                              className="rounded-lg p-1.5 transition hover:bg-slate-200 dark:hover:bg-slate-700"
                               title="Edit"
                             >
-                              <Edit2 className="h-4 w-4 text-gray-500" />
+                              <Edit2 className="h-4 w-4 text-slate-500" />
                             </button>
                             <button
+                              type="button"
                               onClick={() => deleteNote(i)}
-                              className="p-1.5 hover:bg-red-100 rounded-lg transition-colors"
+                              className="rounded-lg p-1.5 transition hover:bg-red-100 dark:hover:bg-red-950/40"
                               title="Delete"
                             >
                               <Trash2 className="h-4 w-4 text-red-500" />
@@ -669,40 +656,34 @@ export function SettingsPage() {
           </div>
         </div>
 
-        {/* Settings Sidebar */}
         <div className="space-y-6">
-          {/* Preferences Card */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-            <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
-              <Activity className="h-5 w-5 text-purple-600" />
+          <div className={`${brand.card} p-6`}>
+            <h3 className="mb-4 flex items-center gap-2 text-lg font-semibold text-slate-900 dark:text-white">
+              <Activity className={`h-5 w-5 ${brand.text}`} />
               Preferences
             </h3>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Default View</label>
-                <select className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <FieldLabel>Default View</FieldLabel>
+                <select className={fieldClass}>
                   <option>Dashboard</option>
                   <option>Calendar</option>
                   <option>Meetings</option>
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">Theme</label>
-                <button
-                  type="button"
-                  onClick={() => dispatch(toggleTheme())}
-                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm dark:border-gray-600"
-                >
+                <FieldLabel>Theme</FieldLabel>
+                <button type="button" onClick={() => dispatch(toggleTheme())} className={`w-full ${brand.btnSecondary}`}>
                   {darkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}
                 </button>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">
-                  <Mail className="inline h-4 w-4 mr-1" />
+                <FieldLabel>
+                  <Mail className="mr-1 inline h-4 w-4" />
                   Email Notifications
-                </label>
-                <div className="flex items-center justify-between rounded-lg border border-gray-100 px-3 py-2 dark:border-gray-700">
-                  <span className="text-sm text-gray-600 dark:text-gray-400">Reminders, assignments & MOM updates</span>
+                </FieldLabel>
+                <div className="flex items-center justify-between rounded-xl border border-slate-100 px-3 py-2 dark:border-slate-700">
+                  <span className="text-sm text-slate-600 dark:text-slate-400">Reminders, assignments & MOM updates</span>
                   <button
                     type="button"
                     disabled={savingSettings}
@@ -712,7 +693,7 @@ export function SettingsPage() {
                       saveEmailSettings(next, reminderHours);
                     }}
                     className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                      emailEnabled ? "bg-blue-600" : "bg-gray-300"
+                      emailEnabled ? "bg-indigo-600" : "bg-slate-300 dark:bg-slate-600"
                     }`}
                   >
                     <span
@@ -722,12 +703,10 @@ export function SettingsPage() {
                     />
                   </button>
                 </div>
-                <p className="mt-1 text-xs text-gray-400">
-                  Configure SMTP in backend .env to send real emails
-                </p>
+                <p className="mt-1 text-xs text-slate-400">Configure SMTP in backend .env to send real emails</p>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">Reminder lead time</label>
+                <FieldLabel>Reminder lead time</FieldLabel>
                 <select
                   value={reminderHours}
                   disabled={savingSettings}
@@ -736,7 +715,7 @@ export function SettingsPage() {
                     setReminderHours(hours);
                     saveEmailSettings(emailEnabled, hours);
                   }}
-                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800"
+                  className={fieldClass}
                 >
                   {REMINDER_OPTIONS.map((o) => (
                     <option key={o.value} value={o.value}>
@@ -748,13 +727,16 @@ export function SettingsPage() {
             </div>
           </div>
 
-          {/* About Card */}
-          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-6">
-            <h3 className="text-lg font-semibold text-gray-800 mb-2">About</h3>
-            <p className="text-sm text-slate-600 mb-3">{APP_NAME} v{APP_VERSION}</p>
+          <div className="rounded-2xl border border-indigo-100 bg-gradient-to-r from-blue-50 to-indigo-50 p-6 dark:border-indigo-900 dark:from-indigo-950/40 dark:to-slate-900">
+            <h3 className="mb-2 text-lg font-semibold text-slate-900 dark:text-white">About</h3>
+            <p className="mb-3 text-sm text-slate-600 dark:text-slate-400">
+              {APP_NAME} v{APP_VERSION}
+            </p>
             <p className="text-xs text-slate-500">{APP_TAGLINE}</p>
-            <div className="mt-4 pt-4 border-t border-indigo-100">
-              <p className="text-xs text-slate-500">© {new Date().getFullYear()} {APP_NAME}. All rights reserved.</p>
+            <div className="mt-4 border-t border-indigo-100 pt-4 dark:border-indigo-900">
+              <p className="text-xs text-slate-500">
+                © {new Date().getFullYear()} {APP_NAME}. All rights reserved.
+              </p>
             </div>
           </div>
         </div>

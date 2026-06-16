@@ -13,6 +13,7 @@ const remarkRoutes = require("./remarks/remarks.routes");
 const notificationRoutes = require("./notifications/notifications.routes");
 const dashboardRoutes = require("./dashboard/dashboard.routes");
 const taskRoutes = require("./tasks/tasks.routes");
+const publicShareRoutes = require("./share/share.routes");
 const { startReminderEngine } = require("./notifications/reminderCron");
 
 const app = express();
@@ -32,6 +33,7 @@ app.use(
 );
 
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
+app.use("/api/public", publicShareRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/meetings", meetingRoutes);
 app.use("/api/remarks", remarkRoutes);
@@ -42,7 +44,7 @@ app.use("/api/tasks", taskRoutes);
 app.use(notFound);
 app.use(errorHandler);
 
-const port = process.env.PORT || 5000;
+const port = process.env.PORT || 5001;
 app.listen(port, () => {
   startReminderEngine();
   console.log(`Backend running on port ${port}`);

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   Plus,
@@ -16,8 +16,29 @@ import api from "../api/client";
 import MeetingTable from "../components/MeetingTable";
 import PageHeader from "../components/PageHeader";
 import FormModal, { FieldLabel, fieldClass, FormSection } from "../components/FormModal";
+import LoadingSpinner from "../components/LoadingSpinner";
+import EmptyState from "../components/EmptyState";
 import { buildFormData } from "../utils/upload";
+import { toInputDate } from "../utils/format";
 import { brand } from "../utils/theme";
+
+function meetingToForm(m) {
+  return {
+    title: m.title || "",
+    description: m.description || "",
+    meeting_type: m.meeting_type || "internal",
+    meeting_date: toInputDate(m.meeting_date),
+    meeting_time: m.meeting_time || "",
+    responsible_person: Array.isArray(m.responsible_person) ? m.responsible_person : [],
+    status: m.status || "Pending",
+    priority: m.priority || "Medium",
+    discussion_topic: m.discussion_topic || "",
+    final_outcome: m.final_outcome || "",
+    reminder_date: toInputDate(m.reminder_date),
+    recurrence: m.recurrence || "None",
+    meeting_link: m.meeting_link || "",
+  };
+}
 
 const EMPTY_FORM = {
   title: "",
@@ -25,15 +46,35 @@ const EMPTY_FORM = {
   meeting_type: "internal",
   meeting_date: "",
   meeting_time: "",
-  responsible_person: "",
-  responsible_email: "",
+  responsible_person: [],
   status: "Pending",
   priority: "Medium",
   discussion_topic: "",
   final_outcome: "",
   reminder_date: "",
   recurrence: "None",
+  meeting_link: "",
 };
+
+function getUserEmail(user) {
+  return (user?.user_detail || user?.email || user?.work_email || user?.official_email || "").trim();
+}
+
+function getUserKey(user) {
+  return String(user?.emp_code || user?.id || user?._id || user?.name || "");
+}
+
+function normalizeUsers(rawUsers) {
+  return (Array.isArray(rawUsers) ? rawUsers : [])
+    .map((u) => ({
+      key: getUserKey(u),
+      name: (u?.name || "").trim(),
+      emp_code: (u?.emp_code || "").trim(),
+      department_name: (u?.department_name || "").trim(),
+      email: getUserEmail(u),
+    }))
+    .filter((u) => u.key && u.name);
+}
 
 export default function MeetingsPage() {
   const [searchParams] = useSearchParams();
@@ -51,16 +92,58 @@ export default function MeetingsPage() {
   });
   const [stats, setStats] = useState({ total: 0, pending: 0, completed: 0, inProgress: 0 });
   const [showModal, setShowModal] = useState(false);
+  const [editingId, setEditingId] = useState(null);
   const [saving, setSaving] = useState(false);
   const [attachmentFile, setAttachmentFile] = useState(null);
   const [formData, setFormData] = useState(EMPTY_FORM);
+  const [users, setUsers] = useState([]);
+  const [responsibleSearch, setResponsibleSearch] = useState("");
+  const [selectedResponsibleKeys, setSelectedResponsibleKeys] = useState([]);
+  const [isResponsibleListOpen, setIsResponsibleListOpen] = useState(false);
+  const responsiblePickerRef = useRef(null);
+
+  const responsibleMap = useMemo(() => {
+    const map = new Map();
+    users.forEach((u) => map.set(u.key, u));
+    return map;
+  }, [users]);
+
+  const selectedResponsible = useMemo(
+    () => selectedResponsibleKeys.map((key) => responsibleMap.get(key)).filter(Boolean),
+    [selectedResponsibleKeys, responsibleMap]
+  );
+
+  const filteredUsers = useMemo(() => {
+    const term = responsibleSearch.trim().toLowerCase();
+    if (!term) return users;
+    return users.filter((u) =>
+      `${u.name} ${u.emp_code} ${u.email} ${u.department_name}`.toLowerCase().includes(term)
+    );
+  }, [users, responsibleSearch]);
+
+  const availableUsers = useMemo(
+    () => filteredUsers.filter((u) => !selectedResponsibleKeys.includes(u.key)),
+    [filteredUsers, selectedResponsibleKeys]
+  );
+
+  const syncResponsibleFields = (keys) => {
+    const selected = keys.map((key) => responsibleMap.get(key)).filter(Boolean);
+    setFormData((f) => ({
+      ...f,
+      responsible_person: selected,
+    }));
+  };
 
   const load = async () => {
     setLoading(true);
     try {
-      const res = await api.get("/meetings", { params: { ...filters, limit: 25 } });
-      const items = res.data.items;
+      const [meetingsRes, usersRes] = await Promise.all([
+        api.get("/meetings", { params: { ...filters, limit: 25 } }),
+        fetch("https://hrms.aimantra.info/wfm/ourcompanyuserlessdetail/v3/null/null/").then((res) => res.json()),
+      ]);
+      const items = meetingsRes.data.items;
       setMeetings(items);
+      setUsers(normalizeUsers(usersRes));
       setStats({
         total: items.length,
         pending: items.filter((m) => m.status === "Pending").length,
@@ -78,6 +161,16 @@ export default function MeetingsPage() {
     load();
   }, [filters.status, filters.search, filters.priority, filters.meeting_type, filters.overdue, filters.thisWeek]);
 
+  useEffect(() => {
+    const handleDocumentClick = (event) => {
+      if (!responsiblePickerRef.current?.contains(event.target)) {
+        setIsResponsibleListOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleDocumentClick);
+    return () => document.removeEventListener("mousedown", handleDocumentClick);
+  }, []);
+
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
@@ -85,8 +178,46 @@ export default function MeetingsPage() {
 
   const closeModal = () => {
     setShowModal(false);
+    setEditingId(null);
     setFormData(EMPTY_FORM);
     setAttachmentFile(null);
+    setResponsibleSearch("");
+    setSelectedResponsibleKeys([]);
+    setIsResponsibleListOpen(false);
+  };
+
+  const openCreateModal = () => {
+    setEditingId(null);
+    setFormData(EMPTY_FORM);
+    setAttachmentFile(null);
+    setResponsibleSearch("");
+    setSelectedResponsibleKeys([]);
+    setIsResponsibleListOpen(false);
+    setShowModal(true);
+  };
+
+  const openEditModal = (meeting) => {
+    const nextForm = meetingToForm(meeting);
+    const existingCodes = nextForm.responsible_person.map((u) => u.emp_code?.toLowerCase());
+    const matchedKeys = users
+      .filter((u) => existingCodes.includes((u.emp_code || "").trim().toLowerCase()))
+      .map((u) => u.key);
+    setEditingId(meeting._id);
+    setFormData(nextForm);
+    setAttachmentFile(null);
+    setResponsibleSearch("");
+    setSelectedResponsibleKeys(matchedKeys);
+    setIsResponsibleListOpen(false);
+    setShowModal(true);
+  };
+
+  const handleResponsibleToggle = (key) => {
+    setSelectedResponsibleKeys((prev) => {
+      const exists = prev.includes(key);
+      const nextKeys = exists ? prev.filter((k) => k !== key) : [...prev, key];
+      syncResponsibleFields(nextKeys);
+      return nextKeys;
+    });
   };
 
   const handleSubmit = async (e) => {
@@ -99,22 +230,33 @@ export default function MeetingsPage() {
       alert("Please select a meeting date");
       return;
     }
+    if (!formData.responsible_person?.length) {
+      alert("Please select at least one responsible person");
+      return;
+    }
 
     setSaving(true);
     try {
       const payload = {
         ...formData,
-        task_create_date: new Date().toISOString(),
         meeting_date: formData.meeting_date,
         reminder_date: formData.reminder_date || "",
+        responsible_person: JSON.stringify(formData.responsible_person),
       };
+      if (!editingId) {
+        payload.task_create_date = new Date().toISOString();
+      }
       const fd = buildFormData(payload, attachmentFile);
-      await api.post("/meetings", fd);
+      if (editingId) {
+        await api.put(`/meetings/${editingId}`, fd);
+      } else {
+        await api.post("/meetings", fd);
+      }
       closeModal();
       await load();
     } catch (error) {
       console.error("Failed to add meeting:", error);
-      alert("Failed to create meeting. Please try again.");
+      alert(editingId ? "Failed to update meeting. Please try again." : "Failed to create meeting. Please try again.");
     } finally {
       setSaving(false);
     }
@@ -156,7 +298,7 @@ export default function MeetingsPage() {
         </button>
         <button
           type="button"
-          onClick={() => setShowModal(true)}
+          onClick={openCreateModal}
           className={`inline-flex items-center text-white gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold ${brand.gradient} ${brand.gradientHover} ${brand.btnRing}`}
         >
           <Plus className="h-4 w-4" />
@@ -196,9 +338,8 @@ export default function MeetingsPage() {
                   [chip.key]: active ? "" : chip.value,
                 }))
               }
-              className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
-                active ? brand.chipActive : brand.chipInactive
-              }`}
+              className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${active ? brand.chipActive : brand.chipInactive
+                }`}
             >
               {chip.label}
             </button>
@@ -207,40 +348,37 @@ export default function MeetingsPage() {
       </div>
 
       {loading && meetings.length === 0 ? (
-        <div className={`flex h-48 flex-col items-center justify-center ${brand.card}`}>
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-slate-200 border-t-indigo-600" />
-          <p className="mt-3 text-sm text-slate-500">Loading meetings…</p>
+        <div className={`flex h-48 ${brand.card}`}>
+          <LoadingSpinner label="Loading meetings…" className="flex-1" />
         </div>
       ) : meetings.length === 0 ? (
-        <div className={`p-12 text-center ${brand.card}`}>
-          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800">
-            <Calendar className="h-8 w-8 text-slate-400" />
-          </div>
-          <h3 className="text-lg font-semibold text-slate-800 dark:text-white">No meetings found</h3>
-          <p className="mt-1 text-sm text-slate-500">
-            {hasActiveFilters ? "Try adjusting your filters" : "Get started by creating your first meeting"}
-          </p>
-          {!hasActiveFilters && (
-            <button
-              type="button"
-              onClick={() => setShowModal(true)}
-              className={`mt-4 inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold ${brand.gradient} ${brand.gradientHover}`}
-            >
-              <Plus className="h-4 w-4" />
-              Create Meeting
-            </button>
-          )}
-        </div>
+        <EmptyState
+          icon={Calendar}
+          title="No meetings found"
+          description={hasActiveFilters ? "Try adjusting your filters" : "Get started by creating your first meeting"}
+          action={
+            !hasActiveFilters && (
+              <button
+                type="button"
+                onClick={openCreateModal}
+                className={`${brand.btnPrimary} ${brand.gradient} ${brand.gradientHover}`}
+              >
+                <Plus className="h-4 w-4" />
+                Create Meeting
+              </button>
+            )
+          }
+        />
       ) : (
-        <MeetingTable meetings={meetings} reload={load} highlightMeetingId={highlightMeetingId} />
+        <MeetingTable meetings={meetings} reload={load} highlightMeetingId={highlightMeetingId} onEditMeeting={openEditModal} />
       )}
 
       <FormModal
         open={showModal}
         onClose={closeModal}
-        eyebrow="New Meeting"
-        title="Schedule a meeting"
-        subtitle="Fill in the details below. Assignee will receive an email if provided."
+        eyebrow={editingId ? "Edit Meeting" : "New Meeting"}
+        title={editingId ? "Update meeting details" : "Schedule a meeting"}
+        subtitle={editingId ? "Modify the meeting information below." : "Fill in the details below. Responsible users will receive an email."}
         maxWidth="max-w-3xl"
         footer={
           <>
@@ -257,7 +395,7 @@ export default function MeetingsPage() {
               disabled={saving}
               className={`flex-1 rounded-xl py-2.5 text-sm font-semibold disabled:opacity-50 ${brand.gradient} ${brand.gradientHover}`}
             >
-              {saving ? "Creating…" : "Create Meeting"}
+              {saving ? "Saving…" : editingId ? "Save Changes" : "Create Meeting"}
             </button>
           </>
         }
@@ -337,6 +475,7 @@ export default function MeetingsPage() {
                 <input
                   type="date"
                   name="reminder_date"
+                  max={toInputDate(new Date(formData.meeting_date))}
                   value={formData.reminder_date}
                   onChange={handleInputChange}
                   className={fieldClass}
@@ -355,29 +494,91 @@ export default function MeetingsPage() {
           </FormSection>
 
           <FormSection title="Assignment & Status" icon={User}>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <FieldLabel>Responsible person</FieldLabel>
-                <input
-                  type="text"
-                  name="responsible_person"
-                  value={formData.responsible_person}
-                  onChange={handleInputChange}
-                  className={fieldClass}
-                  placeholder="Name"
-                />
-              </div>
-              <div>
-                <FieldLabel>Responsible email</FieldLabel>
-                <input
-                  type="email"
-                  name="responsible_email"
-                  value={formData.responsible_email}
-                  onChange={handleInputChange}
-                  className={fieldClass}
-                  placeholder="email@company.com"
-                />
-              </div>
+            <div ref={responsiblePickerRef}>
+              {selectedResponsible.length > 0 && (
+                <div className="mb-3 rounded-xl border border-indigo-200 bg-indigo-50/60 p-2.5 dark:border-indigo-700 dark:bg-indigo-900/20">
+                  <div className="mb-2 flex items-center justify-between">
+                    <p className="text-xs font-semibold text-indigo-700 dark:text-indigo-200">
+                      Selected ({selectedResponsible.length})
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedResponsibleKeys([]);
+                        setFormData((f) => ({ ...f, responsible_person: [] }));
+                      }}
+                      className="text-xs font-semibold text-indigo-700 hover:underline dark:text-indigo-200"
+                    >
+                      Clear all
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedResponsible.map((u) => (
+                      <button
+                        key={u.key}
+                        type="button"
+                        onClick={() => handleResponsibleToggle(u.key)}
+                        className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-slate-700 ring-1 ring-slate-200 transition hover:bg-rose-50 hover:text-rose-700 hover:ring-rose-200 dark:bg-slate-800 dark:text-slate-200 dark:ring-slate-700 dark:hover:bg-rose-950/40 dark:hover:text-rose-200 dark:hover:ring-rose-800"
+                        title="Remove responsible person"
+                      >
+                        {u.name} {u.emp_code ? `(${u.emp_code})` : ""} x
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <FieldLabel required>Responsible person (multiple)</FieldLabel>
+              <input
+                type="text"
+                value={responsibleSearch}
+                onFocus={() => setIsResponsibleListOpen(true)}
+                onChange={(e) => {
+                  setResponsibleSearch(e.target.value);
+                  setIsResponsibleListOpen(true);
+                }}
+                className={fieldClass}
+                placeholder="Search by name, emp code, department"
+              />
+              {isResponsibleListOpen && (
+                <div className="mt-2 max-h-52 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
+                  {availableUsers.length === 0 ? (
+                    <p className="px-3 py-3 text-xs text-slate-500 dark:text-slate-400">
+                      {selectedResponsible.length > 0 ? "All matching users already selected" : "No users found"}
+                    </p>
+                  ) : (
+                    availableUsers.map((u) => (
+                      <label
+                        key={u.key}
+                        className="flex cursor-pointer items-start gap-3 border-b border-slate-100 px-3 py-2.5 text-sm transition hover:bg-indigo-50/60 last:border-b-0 dark:border-slate-800 dark:hover:bg-slate-800/80"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={false}
+                          onChange={() => handleResponsibleToggle(u.key)}
+                          className="mt-0.5 h-4 w-0 rounded border-slate-300 text-indigo-600 opacity-0 focus:ring-indigo-500"
+                        />
+                        <div className="min-w-0 leading-5 text-slate-700 dark:text-slate-200">
+                          <p className="truncate font-medium">{u.name}</p>
+                          <p className="truncate text-xs text-slate-500 dark:text-slate-400">
+                            {u.emp_code || "No code"} {u.department_name ? `| ${u.department_name}` : ""}
+                            {u.email ? ` | ${u.email}` : ""}
+                          </p>
+                        </div>
+                      </label>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+            <div>
+              <FieldLabel>Responsible email</FieldLabel>
+              <input
+                type="text"
+                value={formData.responsible_person.map((u) => u.email).filter(Boolean).join(", ")}
+                readOnly
+                className={fieldClass}
+                placeholder="Auto-filled from selected responsible users"
+              />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -404,6 +605,17 @@ export default function MeetingsPage() {
           </FormSection>
 
           <FormSection title="Additional Details" icon={Tag}>
+            <div>
+              <FieldLabel>Meeting Link</FieldLabel>
+              <input
+                type="text"
+                name="meeting_link"
+                value={formData.meeting_link}
+                onChange={handleInputChange}
+                className={fieldClass}
+                placeholder="https://meet.google.com/..."
+              />
+            </div>
             <div>
               <FieldLabel>Expected outcome</FieldLabel>
               <input
