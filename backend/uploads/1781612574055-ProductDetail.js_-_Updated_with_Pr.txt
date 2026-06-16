@@ -1,0 +1,4672 @@
+// ProductDetail.js - Updated with Product Details Section First
+import React, { useState, useEffect } from 'react';
+import './ProductDetail.css';
+import { 
+  BsThreeDotsVertical, 
+  BsGrid, 
+  BsList, 
+  BsSearch,
+  BsFilter,
+  BsDownload,
+  BsPrinter,
+  BsChevronDown,
+  BsChevronUp,
+  BsX,
+  BsCheck2,
+  BsChevronLeft,
+  BsChevronRight
+} from "react-icons/bs";
+import { 
+  FaEye, 
+  FaEdit, 
+  FaCheckCircle, 
+  FaTimesCircle, 
+  FaBan, 
+  FaUndo, 
+  FaStar, 
+  FaStarHalfAlt, 
+  FaRegStar,
+  FaShoppingCart,
+  FaUserCircle,
+  FaStore,
+  FaBoxOpen,
+  FaClipboardList,
+  FaChartBar,
+  FaArrowLeft,
+  FaSort,
+  FaSortUp,
+  FaSortDown,
+  FaClock,
+  FaTruck,
+  FaCheckDouble,
+  FaTimes,
+  FaInfoCircle,
+  FaBox,
+  FaCube,
+  FaList,
+  FaThLarge,
+  FaFilter
+} from "react-icons/fa";
+import { 
+  FiPackage, 
+  FiBox, 
+  FiCalendar, 
+  FiUser, 
+  FiTag, 
+  FiBuilding, 
+  FiArrowLeft, 
+  FiClock, 
+  FiTrendingUp, 
+  FiTrendingDown, 
+  FiDollarSign, 
+  FiShoppingBag, 
+  FiMail, 
+  FiPhone,
+  FiMapPin,
+  FiGlobe,
+  FiAward,
+  FiShield,
+  FiCheck,
+  FiX
+} from "react-icons/fi";
+import BASE_URL from "../../../Base";
+import { useParams, useNavigate } from 'react-router-dom';
+
+function ProductDetail() {
+  const navigate = useNavigate();
+  const { productId } = useParams();
+  
+  // State variables
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [productData, setProductData] = useState(null);
+  const [variants, setVariants] = useState([]);
+  const [filteredVariants, setFilteredVariants] = useState([]);
+  const [selectedVariant, setSelectedVariant] = useState(null);
+  const [selectedImage, setSelectedImage] = useState(null);
+  const [showActionModal, setShowActionModal] = useState(false);
+  const [selectedVariantForAction, setSelectedVariantForAction] = useState(null);
+  const [actionType, setActionType] = useState('');
+  const [reason, setReason] = useState('');
+  const [activeTab, setActiveTab] = useState('variants');
+  const [orders, setOrders] = useState([]);
+  const [reviews, setReviews] = useState([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [sortField, setSortField] = useState('title');
+  const [sortDirection, setSortDirection] = useState('asc');
+  const [selectedVariants, setSelectedVariants] = useState([]);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [expandedSections, setExpandedSections] = useState({
+    productInfo: true,
+    pricing: true,
+    shipping: true,
+    variants: true
+  });
+
+  // Mock data
+  const mockOrders = [
+    { id: 'ORD-001', customer: 'John Doe', email: 'john@email.com', date: '2024-06-15', amount: 299.00, status: 'Delivered', variant: '500ml', qty: 2, paymentMethod: 'Card' },
+    { id: 'ORD-002', customer: 'Jane Smith', email: 'jane@email.com', date: '2024-06-14', amount: 598.00, status: 'Shipped', variant: '1L', qty: 1, paymentMethod: 'UPI' },
+    { id: 'ORD-003', customer: 'Mike Johnson', email: 'mike@email.com', date: '2024-06-13', amount: 449.00, status: 'Processing', variant: '250ml', qty: 3, paymentMethod: 'COD' },
+    { id: 'ORD-004', customer: 'Sarah Wilson', email: 'sarah@email.com', date: '2024-06-12', amount: 299.00, status: 'Delivered', variant: '500ml', qty: 1, paymentMethod: 'Card' },
+    { id: 'ORD-005', customer: 'David Brown', email: 'david@email.com', date: '2024-06-11', amount: 897.00, status: 'Cancelled', variant: '100ml', qty: 4, paymentMethod: 'UPI' },
+  ];
+
+  const mockReviews = [
+    { id: 1, customer: 'Alice Cooper', rating: 5, comment: 'Excellent product! Works great for my skin. Highly recommend to everyone.', date: '2024-06-14', variant: '500ml', helpful: 12 },
+    { id: 2, customer: 'Bob Martin', rating: 4, comment: 'Good quality, but price could be better. Overall satisfied with the purchase.', date: '2024-06-12', variant: '250ml', helpful: 8 },
+    { id: 3, customer: 'Carol White', rating: 5, comment: 'Amazing results! My skin feels so fresh and clean. Will buy again.', date: '2024-06-10', variant: '500ml', helpful: 15 },
+    { id: 4, customer: 'Dan Thompson', rating: 3, comment: 'Average product, nothing special. Works fine but not worth the hype.', date: '2024-06-08', variant: '1L', helpful: 3 },
+    { id: 5, customer: 'Emma Davis', rating: 5, comment: 'Best face wash I\'ve ever used! My skin has improved dramatically.', date: '2024-06-05', variant: '500ml', helpful: 20 },
+  ];
+
+  // Fetch data
+  useEffect(() => {
+    fetchProductDetails();
+    fetchOrders();
+    fetchReviews();
+  }, [productId]);
+
+  useEffect(() => {
+    applyFilters();
+  }, [variants, searchTerm, statusFilter, sortField, sortDirection]);
+
+  useEffect(() => {
+    if (selectedVariant?.media?.length > 0) {
+      const coverImage = selectedVariant.media.find(m => m.is_cover);
+      setSelectedImage(coverImage?.media_url || selectedVariant.media[0]?.media_url);
+      setCurrentImageIndex(selectedVariant.media.findIndex(m => 
+        m.media_url === (coverImage?.media_url || selectedVariant.media[0]?.media_url)
+      ));
+    }
+  }, [selectedVariant]);
+
+  const fetchProductDetails = async () => {
+    const token = sessionStorage.getItem("superadmin_token");
+    try {
+      setLoading(true);
+      const response = await fetch(`${BASE_URL}/vendors/admin/product/?id=${productId}`, {
+        method: 'GET',
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+          "ngrok-skip-browser-warning": "true",
+        },
+      });
+
+      if (!response.ok) throw new Error('Failed to fetch product details');
+      const result = await response.json();
+
+      if (result.success) {
+        setProductData(result.data.product);
+        setVariants(result.data.variants);
+        setFilteredVariants(result.data.variants);
+        if (result.data.variants.length > 0) {
+          setSelectedVariant(result.data.variants[0]);
+        }
+      } else {
+        setError(result.message || 'Failed to load product');
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchOrders = async () => setOrders(mockOrders);
+  const fetchReviews = async () => setReviews(mockReviews);
+
+  // Filter and Sort
+  const applyFilters = () => {
+    let filtered = [...variants];
+    if (searchTerm) {
+      filtered = filtered.filter(v => 
+        v.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        v.variant_code?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        v.size?.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+    if (statusFilter !== 'all') {
+      filtered = filtered.filter(v => v.status?.toLowerCase() === statusFilter);
+    }
+    filtered.sort((a, b) => {
+      let aVal = a[sortField] || '';
+      let bVal = b[sortField] || '';
+      if (sortField === 'mrp' || sortField === 'selling_price' || sortField === 'stock') {
+        aVal = parseFloat(aVal) || 0;
+        bVal = parseFloat(bVal) || 0;
+      } else {
+        aVal = String(aVal).toLowerCase();
+        bVal = String(bVal).toLowerCase();
+      }
+      if (sortDirection === 'asc') return aVal > bVal ? 1 : -1;
+      return aVal < bVal ? 1 : -1;
+    });
+    setFilteredVariants(filtered);
+  };
+
+  const handleSort = (field) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+  };
+
+  // Variant Actions
+  const handleVariantAction = async (variantId, action, reasonText = '') => {
+    try {
+      const token = sessionStorage.getItem("superadmin_token");
+      const response = await fetch(`${BASE_URL}/vendors/admin/product/variant-action/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+          "ngrok-skip-browser-warning": "true",
+        },
+        body: JSON.stringify({ variant_id: variantId, action, reason: reasonText })
+      });
+
+      if (!response.ok) throw new Error(`Failed to ${action} variant`);
+      const result = await response.json();
+
+      if (result.success) {
+        const statusMap = { approve: 'approved', reject: 'rejected', suspend: 'suspended' };
+        const newStatus = statusMap[action] || 'pending';
+
+        setVariants(prev => prev.map(v => 
+          v.id === variantId ? { ...v, status: newStatus, reason: reasonText } : v
+        ));
+
+        if (selectedVariant?.id === variantId) {
+          setSelectedVariant(prev => ({ ...prev, status: newStatus, reason: reasonText }));
+        }
+
+        setShowActionModal(false);
+        setReason('');
+        setSelectedVariantForAction(null);
+        setSelectedVariants([]);
+      } else {
+        alert(result.message || `Failed to ${action} variant`);
+      }
+    } catch (err) {
+      alert(err.message);
+    }
+  };
+
+  const handleBulkAction = async (action) => {
+    if (selectedVariants.length === 0) {
+      alert('Please select at least one variant');
+      return;
+    }
+
+    if (window.confirm(`Are you sure you want to ${action} ${selectedVariants.length} variant(s)?`)) {
+      const reasonText = window.prompt(`Please provide a reason for ${action}ing these variants:`);
+      if (action === 'reject' || action === 'suspend') {
+        if (!reasonText || reasonText.trim() === '') {
+          alert('Reason is required');
+          return;
+        }
+      }
+
+      for (const variantId of selectedVariants) {
+        await handleVariantAction(variantId, action, reasonText || '');
+      }
+    }
+  };
+
+  // Navigation functions for image gallery
+  const nextImage = () => {
+    if (selectedVariant?.media?.length > 0) {
+      const newIndex = (currentImageIndex + 1) % selectedVariant.media.length;
+      setCurrentImageIndex(newIndex);
+      setSelectedImage(selectedVariant.media[newIndex].media_url);
+    }
+  };
+
+  const prevImage = () => {
+    if (selectedVariant?.media?.length > 0) {
+      const newIndex = (currentImageIndex - 1 + selectedVariant.media.length) % selectedVariant.media.length;
+      setCurrentImageIndex(newIndex);
+      setSelectedImage(selectedVariant.media[newIndex].media_url);
+    }
+  };
+
+  const selectThumbnail = (index) => {
+    setCurrentImageIndex(index);
+    setSelectedImage(selectedVariant.media[index].media_url);
+  };
+
+  // UI Helpers
+  const getStatusBadge = (status) => {
+    const statusMap = {
+      'approved': { class: 'badge-approved', label: 'Approved', icon: <FaCheckCircle /> },
+      'pending': { class: 'badge-pending', label: 'Pending', icon: <FiClock /> },
+      'rejected': { class: 'badge-rejected', label: 'Rejected', icon: <FaTimesCircle /> },
+      'suspended': { class: 'badge-suspended', label: 'Suspended', icon: <FaBan /> }
+    };
+    const info = statusMap[status?.toLowerCase()] || statusMap['pending'];
+    return (
+      <span className={`status-badge ${info.class}`}>
+        {info.icon} {info.label}
+      </span>
+    );
+  };
+
+  const getOrderStatusBadge = (status) => {
+    const map = {
+      'delivered': { class: 'order-delivered', label: 'Delivered', icon: <FaCheckDouble /> },
+      'shipped': { class: 'order-shipped', label: 'Shipped', icon: <FaTruck /> },
+      'processing': { class: 'order-processing', label: 'Processing', icon: <FaClock /> },
+      'cancelled': { class: 'order-cancelled', label: 'Cancelled', icon: <FaTimes /> }
+    };
+    const info = map[status?.toLowerCase()] || map['processing'];
+    return (
+      <span className={`order-status ${info.class}`}>
+        {info.icon} {info.label}
+      </span>
+    );
+  };
+
+  const renderStars = (rating) => {
+    const stars = [];
+    const full = Math.floor(rating);
+    const half = rating % 1 >= 0.5;
+    for (let i = 0; i < 5; i++) {
+      if (i < full) stars.push(<FaStar key={i} className="star-filled" />);
+      else if (i === full && half) stars.push(<FaStarHalfAlt key={i} className="star-half" />);
+      else stars.push(<FaRegStar key={i} className="star-empty" />);
+    }
+    return stars;
+  };
+
+  const calculateStats = () => {
+    const totalStock = variants.reduce((sum, v) => sum + (v.stock || 0), 0);
+    const approved = variants.filter(v => v.status?.toLowerCase() === 'approved').length;
+    const pending = variants.filter(v => v.status?.toLowerCase() === 'pending').length;
+    const rejected = variants.filter(v => v.status?.toLowerCase() === 'rejected').length;
+    const suspended = variants.filter(v => v.status?.toLowerCase() === 'suspended').length;
+    return { totalStock, approved, pending, rejected, suspended, total: variants.length };
+  };
+
+  const stats = calculateStats();
+
+  const toggleSection = (section) => {
+    setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
+  };
+
+  const formatCurrency = (amount) => {
+    return new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
+    }).format(amount);
+  };
+
+  const exportData = (type) => {
+    let data = [];
+    let filename = '';
+    
+    if (type === 'variants') {
+      data = variants.map(v => ({
+        'Variant Name': v.title,
+        'SKU': v.variant_code,
+        'Size': `${v.size} ${v.weightage}`,
+        'MRP': v.mrp,
+        'Selling Price': v.selling_price,
+        'Stock': v.stock,
+        'Status': v.status
+      }));
+      filename = 'variants_data.csv';
+    } else if (type === 'orders') {
+      data = orders.map(o => ({
+        'Order ID': o.id,
+        'Customer': o.customer,
+        'Variant': o.variant,
+        'Qty': o.qty,
+        'Amount': o.amount,
+        'Date': o.date,
+        'Status': o.status
+      }));
+      filename = 'orders_data.csv';
+    } else if (type === 'reviews') {
+      data = reviews.map(r => ({
+        'Customer': r.customer,
+        'Rating': r.rating,
+        'Comment': r.comment,
+        'Date': r.date,
+        'Variant': r.variant
+      }));
+      filename = 'reviews_data.csv';
+    }
+
+    if (data.length > 0) {
+      const headers = Object.keys(data[0]);
+      const csv = [
+        headers.join(','),
+        ...data.map(row => headers.map(h => JSON.stringify(row[h] || '')).join(','))
+      ].join('\n');
+      
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      window.URL.revokeObjectURL(url);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="loading-container">
+        <div className="spinner"></div>
+        <p className="loading-text">Loading product details...</p>
+        <div className="loading-progress-bar">
+          <div className="progress-fill"></div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="error-container">
+        <div className="error-icon">⚠️</div>
+        <h3>Error Loading Product</h3>
+        <p>{error}</p>
+        <button onClick={() => window.location.reload()} className="btn-primary">
+          Retry
+        </button>
+      </div>
+    );
+  }
+
+  if (!productData) {
+    return (
+      <div className="error-container">
+        <p>No product found</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="product-detail-container">
+      {/* ===== TOP NAVIGATION ===== */}
+      <nav className="top-nav">
+        <div className="nav-left">
+          <button className="back-button" onClick={() => navigate(-1)}>
+            <FaArrowLeft />
+          </button>
+          <div className="breadcrumb">
+            <span>Products</span>
+            <span className="separator">/</span>
+            <span className="active">{productData.name}</span>
+          </div>
+        </div>
+        <div className="nav-right">
+          <button className="nav-btn" onClick={() => exportData('variants')}>
+            <BsDownload /> Export
+          </button>
+          <button className="nav-btn" onClick={() => window.print()}>
+            <BsPrinter />
+          </button>
+          <button className="nav-btn" onClick={() => setIsSidebarOpen(true)}>
+            <FaInfoCircle />
+          </button>
+        </div>
+      </nav>
+
+      {/* ===== PRODUCT HEADER ===== */}
+      <div className="product-header">
+        <div className="product-header-left">
+          <h1 className="product-title">{productData.name}</h1>
+          <div className="product-meta-tags">
+            <span className="meta-tag">
+              <FiTag /> ID: {productData.id?.substring(0, 8)}...
+            </span>
+            <span className="meta-tag">
+              <FiCalendar /> {new Date(productData.created_at).toLocaleDateString('en-US', { 
+                year: 'numeric', 
+                month: 'short', 
+                day: 'numeric' 
+              })}
+            </span>
+            <span className="meta-tag">
+              {/* <FiBuilding /> */}
+               {productData.vendor_business_name}
+            </span>
+            <span className="meta-tag">
+              <FiPackage /> {variants.length} Variants
+            </span>
+            <span className="meta-tag">
+              {getStatusBadge('approved')}
+            </span>
+          </div>
+        </div>
+        <div className="product-header-right">
+          <button className="btn-outline" onClick={() => window.open(`/vendor/${productData.vendor_id}`, '_blank')}>
+            <FaStore /> View Vendor
+          </button>
+          <button className="btn-primary">
+            <FaEdit /> Edit Product
+          </button>
+        </div>
+      </div>
+
+      {/* ===== STATS CARDS ===== */}
+      <div className="stats-grid">
+        <div className="stat-card stat-total">
+          <div className="stat-icon-wrapper variant-bg">
+            <FiPackage className="stat-icon" />
+          </div>
+          <div className="stat-content">
+            <span className="stat-number">{stats.total}</span>
+            <span className="stat-label">Total Variants</span>
+            <div className="stat-trend up">
+              <FiTrendingUp /> +12%
+            </div>
+          </div>
+        </div>
+        <div className="stat-card stat-stock">
+          <div className="stat-icon-wrapper stock-bg">
+            <FiBox className="stat-icon" />
+          </div>
+          <div className="stat-content">
+            <span className="stat-number">{stats.totalStock}</span>
+            <span className="stat-label">Total Stock</span>
+            <div className="stat-trend up">
+              <FiTrendingUp /> +8%
+            </div>
+          </div>
+        </div>
+        <div className="stat-card stat-approved">
+          <div className="stat-icon-wrapper success-bg">
+            <FaCheckCircle className="stat-icon" />
+          </div>
+          <div className="stat-content">
+            <span className="stat-number">{stats.approved}</span>
+            <span className="stat-label">Approved</span>
+            <div className="stat-progress-bar">
+              <div className="stat-progress-fill" style={{ width: `${(stats.approved / (stats.total || 1)) * 100}%` }}></div>
+            </div>
+          </div>
+        </div>
+        <div className="stat-card stat-pending">
+          <div className="stat-icon-wrapper pending-bg">
+            <FiClock className="stat-icon" />
+          </div>
+          <div className="stat-content">
+            <span className="stat-number">{stats.pending}</span>
+            <span className="stat-label">Pending</span>
+            <div className="stat-trend down">
+              <FiTrendingDown /> -3%
+            </div>
+          </div>
+        </div>
+        <div className="stat-card stat-rejected">
+          <div className="stat-icon-wrapper danger-bg">
+            <FaTimesCircle className="stat-icon" />
+          </div>
+          <div className="stat-content">
+            <span className="stat-number">{stats.rejected}</span>
+            <span className="stat-label">Rejected</span>
+          </div>
+        </div>
+        <div className="stat-card stat-suspended">
+          <div className="stat-icon-wrapper warning-bg">
+            <FaBan className="stat-icon" />
+          </div>
+          <div className="stat-content">
+            <span className="stat-number">{stats.suspended}</span>
+            <span className="stat-label">Suspended</span>
+          </div>
+        </div>
+      </div>
+
+      {/* ===== PRODUCT DETAILS SECTION (NEW) ===== */}
+      <div className="product-details-section">
+        <div className="details-header">
+          <h3 className="details-title">
+            <FiPackage className="details-title-icon" />
+            Product Details
+          </h3>
+          <span className="product-id-badge">{productData.id}</span>
+        </div>
+        
+        <div className="product-details-grid">
+          {/* Left Column - Product Information */}
+          <div className="details-column">
+            <div className="details-group">
+              <h4 className="details-group-title">
+                <FaInfoCircle className="group-icon" />
+                Basic Information
+              </h4>
+              <div className="details-row">
+                <span className="details-label">Product Name</span>
+                <span className="details-value">{productData.name}</span>
+              </div>
+              <div className="details-row">
+                <span className="details-label">Brand</span>
+                <span className="details-value brand-name">{productData.brand_name}</span>
+              </div>
+              <div className="details-row">
+                <span className="details-label">Manufacturer</span>
+                <span className="details-value">{productData.manufacturer || 'N/A'}</span>
+              </div>
+              <div className="details-row">
+                <span className="details-label">Origin</span>
+                <span className="details-value">{productData.origin || 'N/A'}</span>
+              </div>
+              <div className="details-row">
+                <span className="details-label">Treatment Type</span>
+                <span className="details-value">{productData.treatment_type || 'N/A'}</span>
+              </div>
+            </div>
+
+            <div className="details-group">
+              <h4 className="details-group-title">
+                <FiBox className="group-icon" />
+                Category & Classification
+              </h4>
+              <div className="details-row">
+                <span className="details-label">Category</span>
+                <span className="details-value">{productData.product_category_name || 'N/A'}</span>
+              </div>
+              <div className="details-row">
+                <span className="details-label">Subcategory</span>
+                <span className="details-value">{productData.subcategory || 'N/A'}</span>
+              </div>
+              <div className="details-row">
+                <span className="details-label">Customer Category</span>
+                <span className="details-value">{productData.customer_category_name || 'N/A'}</span>
+              </div>
+              <div className="details-row">
+                <span className="details-label">Health Disease</span>
+                <span className="details-value">
+                  {productData.health_disease_ids?.length > 0 ? 
+                    `${productData.health_disease_ids.length} associated` : 
+                    'None'
+                  }
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Right Column - Vendor & Status */}
+          <div className="details-column">
+            <div className="details-group">
+              <h4 className="details-group-title">
+                <FaStore className="group-icon" />
+                Vendor Information
+              </h4>
+              <div className="details-row">
+                <span className="details-label">Vendor</span>
+                <span className="details-value vendor-name">{productData.vendor_business_name}</span>
+              </div>
+              <div className="details-row">
+                <span className="details-label">Phone</span>
+                <span className="details-value">{productData.vendor_phone_number || 'N/A'}</span>
+              </div>
+              <div className="details-row">
+                <span className="details-label">Vendor ID</span>
+                <span className="details-value id-text">{productData.vendor_id?.substring(0, 12)}...</span>
+              </div>
+              <div className="details-row">
+                <span className="details-label">Added On</span>
+                <span className="details-value">{new Date(productData.created_at).toLocaleDateString('en-US', {
+                  year: 'numeric',
+                  month: 'long',
+                  day: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit'
+                })}</span>
+              </div>
+            </div>
+
+            <div className="details-group">
+              <h4 className="details-group-title">
+                <FiShield className="group-icon" />
+                Status & Features
+              </h4>
+              <div className="details-row">
+                <span className="details-label">Status</span>
+                <span className="details-value">{getStatusBadge('approved')}</span>
+              </div>
+              <div className="details-row">
+                <span className="details-label">Featured</span>
+                <span className="details-value">
+                  {productData.is_featured ? 
+                    <span className="featured-tag"><FaCheckCircle /> Featured</span> : 
+                    <span className="not-featured-tag"><FaTimesCircle /> Not Featured</span>
+                  }
+                </span>
+              </div>
+              <div className="details-row">
+                <span className="details-label">Nutrition</span>
+                <span className="details-value">
+                  {productData.is_nutrition ? 
+                    <span className="yes-tag"><FiCheck /> Yes</span> : 
+                    <span className="no-tag"><FiX /> No</span>
+                  }
+                </span>
+              </div>
+              <div className="details-row">
+                <span className="details-label">Last Updated</span>
+                <span className="details-value">{new Date(productData.updated_at).toLocaleDateString('en-US', {
+                  year: 'numeric',
+                  month: 'short',
+                  day: 'numeric'
+                })}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Description Section - Full Width */}
+        <div className="details-group full-width">
+          <h4 className="details-group-title">
+            {/* <FiClipboardList className="group-icon" /> */}
+            Description
+          </h4>
+          <p className="product-description">{productData.full_description || 'No description available'}</p>
+          {productData.short_description && (
+            <div className="short-description">
+              <strong>Short Description:</strong>
+              <p>{productData.short_description}</p>
+            </div>
+          )}
+          {productData.how_to_use && (
+            <div className="how-to-use">
+              <strong>How to Use:</strong>
+              <p>{productData.how_to_use}</p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ===== TABS ===== */}
+      <div className="tabs-container">
+        <div className="tabs-header">
+          <button 
+            className={`tab-btn ${activeTab === 'variants' ? 'active' : ''}`}
+            onClick={() => setActiveTab('variants')}
+          >
+            <FaCube /> Variants <span className="tab-count">{variants.length}</span>
+          </button>
+          <button 
+            className={`tab-btn ${activeTab === 'orders' ? 'active' : ''}`}
+            onClick={() => setActiveTab('orders')}
+          >
+            <FiShoppingBag /> Orders <span className="tab-count">{orders.length}</span>
+          </button>
+          <button 
+            className={`tab-btn ${activeTab === 'reviews' ? 'active' : ''}`}
+            onClick={() => setActiveTab('reviews')}
+          >
+            <FaStar /> Reviews <span className="tab-count">{reviews.length}</span>
+          </button>
+          <button 
+            className={`tab-btn ${activeTab === 'analytics' ? 'active' : ''}`}
+            onClick={() => setActiveTab('analytics')}
+          >
+            <FaChartBar /> Analytics
+          </button>
+        </div>
+
+        {/* ===== VARIANTS TAB ===== */}
+        {activeTab === 'variants' && (
+          <div className="tab-content">
+            {/* Search and Filters */}
+            <div className="variants-toolbar">
+              <div className="search-box">
+                <BsSearch className="search-icon" />
+                <input
+                  type="text"
+                  placeholder="Search variants by name, SKU..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
+                {searchTerm && (
+                  <button className="clear-search" onClick={() => setSearchTerm('')}>
+                    <BsX />
+                  </button>
+                )}
+              </div>
+              <div className="toolbar-actions">
+                <div className="filter-wrapper">
+                  <button className="filter-btn" onClick={() => setShowFilters(!showFilters)}>
+                    <FaFilter /> Filter {statusFilter !== 'all' && <span className="filter-active-dot"></span>}
+                  </button>
+                  {showFilters && (
+                    <div className="filter-dropdown">
+                      <div className="filter-option" onClick={() => setStatusFilter('all')}>
+                        <span>All</span>
+                        {statusFilter === 'all' && <BsCheck2 className="filter-check" />}
+                      </div>
+                      <div className="filter-option" onClick={() => setStatusFilter('approved')}>
+                        <span>Approved</span>
+                        {statusFilter === 'approved' && <BsCheck2 className="filter-check" />}
+                      </div>
+                      <div className="filter-option" onClick={() => setStatusFilter('pending')}>
+                        <span>Pending</span>
+                        {statusFilter === 'pending' && <BsCheck2 className="filter-check" />}
+                      </div>
+                      <div className="filter-option" onClick={() => setStatusFilter('rejected')}>
+                        <span>Rejected</span>
+                        {statusFilter === 'rejected' && <BsCheck2 className="filter-check" />}
+                      </div>
+                      <div className="filter-option" onClick={() => setStatusFilter('suspended')}>
+                        <span>Suspended</span>
+                        {statusFilter === 'suspended' && <BsCheck2 className="filter-check" />}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Bulk Actions Bar */}
+            {selectedVariants.length > 0 && (
+              <div className="bulk-actions-bar">
+                <span className="bulk-count">{selectedVariants.length} variant(s) selected</span>
+                <div className="bulk-actions">
+                  <button className="bulk-btn approve" onClick={() => handleBulkAction('approve')}>
+                    <FaCheckCircle /> Approve All
+                  </button>
+                  <button className="bulk-btn reject" onClick={() => handleBulkAction('reject')}>
+                    <FaTimesCircle /> Reject All
+                  </button>
+                  <button className="bulk-btn suspend" onClick={() => handleBulkAction('suspend')}>
+                    <FaBan /> Suspend All
+                  </button>
+                  <button className="bulk-btn clear" onClick={() => setSelectedVariants([])}>
+                    <BsX /> Clear
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* ===== VARIANT DETAILS WITH IMAGE GALLERY ===== */}
+            {selectedVariant && (
+              <div className="selected-variant-card animate-slide-down">
+                <div className="variant-selector-header">
+                  <div className="variant-selector-title">
+                    <FaBoxOpen className="title-icon" />
+                    <h4>Selected Variant</h4>
+                    <span className="variant-name-badge">{selectedVariant.title}</span>
+                    <span className="variant-status-inline">{getStatusBadge(selectedVariant.status)}</span>
+                  </div>
+                  <button className="btn-outline-small" onClick={() => setSelectedVariant(null)}>
+                    <BsX /> Clear
+                  </button>
+                </div>
+
+                <div className="selected-variant-layout">
+                  {/* Image Gallery */}
+                  <div className="variant-gallery">
+                    <div className="main-image-container">
+                      {selectedVariant.media?.length > 0 ? (
+                        <>
+                          <img 
+                            src={selectedImage || 'https://via.placeholder.com/400'}
+                            alt={selectedVariant.title}
+                            className="main-gallery-image"
+                            onError={(e) => e.target.src = 'https://via.placeholder.com/400'}
+                          />
+                          {selectedVariant.media.length > 1 && (
+                            <>
+                              <button className="gallery-nav prev" onClick={prevImage}>
+                                <BsChevronLeft />
+                              </button>
+                              <button className="gallery-nav next" onClick={nextImage}>
+                                <BsChevronRight />
+                              </button>
+                              <div className="image-counter">
+                                {currentImageIndex + 1} / {selectedVariant.media.length}
+                              </div>
+                            </>
+                          )}
+                        </>
+                      ) : (
+                        <div className="no-image-placeholder">
+                          <FiPackage className="no-image-icon" />
+                          <span>No Image Available</span>
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* Thumbnail Strip */}
+                    {selectedVariant.media?.length > 0 && (
+                      <div className="thumbnail-strip">
+                        {selectedVariant.media.map((media, idx) => (
+                          <div 
+                            key={idx}
+                            className={`thumbnail-item ${currentImageIndex === idx ? 'active' : ''}`}
+                            onClick={() => selectThumbnail(idx)}
+                          >
+                            <img 
+                              src={media.media_url}
+                              alt={`Thumbnail ${idx + 1}`}
+                              onError={(e) => e.target.src = 'https://via.placeholder.com/80'}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Variant Details */}
+                  <div className="variant-gallery-details">
+                    <div className="variant-detail-section">
+                      <h5 className="detail-section-title">Variant Information</h5>
+                      <div className="detail-row">
+                        <span className="detail-label">Variant Name</span>
+                        <span className="detail-value highlight">{selectedVariant.title}</span>
+                      </div>
+                      <div className="detail-row">
+                        <span className="detail-label">SKU</span>
+                        <span className="detail-value sku-code">{selectedVariant.variant_code}</span>
+                      </div>
+                      <div className="detail-row">
+                        <span className="detail-label">Size</span>
+                        <span className="detail-value">{selectedVariant.size} {selectedVariant.weightage}</span>
+                      </div>
+                      <div className="detail-row">
+                        <span className="detail-label">HSN Code</span>
+                        <span className="detail-value">{selectedVariant.hsn_code}</span>
+                      </div>
+                    </div>
+
+                    <div className="variant-detail-section">
+                      <h5 className="detail-section-title">Pricing</h5>
+                      <div className="detail-row">
+                        <span className="detail-label">MRP</span>
+                        <span className="detail-value mrp">₹{parseFloat(selectedVariant.mrp).toFixed(2)}</span>
+                      </div>
+                      <div className="detail-row">
+                        <span className="detail-label">Selling Price</span>
+                        <span className="detail-value selling">₹{parseFloat(selectedVariant.selling_price).toFixed(2)}</span>
+                      </div>
+                      <div className="detail-row">
+                        <span className="detail-label">Discount</span>
+                        <span className="detail-value discount">
+                          {((1 - parseFloat(selectedVariant.selling_price) / parseFloat(selectedVariant.mrp)) * 100).toFixed(0)}%
+                        </span>
+                      </div>
+                      <div className="detail-row">
+                        <span className="detail-label">Taxes</span>
+                        <span className="detail-value">
+                          {selectedVariant.taxes?.map((tax, idx) => (
+                            <span key={idx} className="tax-tag">{tax.name}: {tax.rate}%</span>
+                          ))}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="variant-detail-section">
+                      <h5 className="detail-section-title">Stock & Status</h5>
+                      <div className="detail-row">
+                        <span className="detail-label">Stock</span>
+                        <span className={`detail-value ${selectedVariant.stock < selectedVariant.low_stock_threshold ? 'low-stock' : ''}`}>
+                          {selectedVariant.stock} units
+                          {selectedVariant.stock < selectedVariant.low_stock_threshold && 
+                            <span className="low-stock-warning"> ⚠️ Low stock</span>
+                          }
+                        </span>
+                      </div>
+                      <div className="detail-row">
+                        <span className="detail-label">Low Stock Threshold</span>
+                        <span className="detail-value">{selectedVariant.low_stock_threshold} units</span>
+                      </div>
+                      <div className="detail-row">
+                        <span className="detail-label">Returnable</span>
+                        <span className="detail-value">{selectedVariant.is_returnable ? '✅ Yes' : '❌ No'}</span>
+                      </div>
+                      <div className="detail-row">
+                        <span className="detail-label">Pay on Delivery</span>
+                        <span className="detail-value">{selectedVariant.pay_on_delivery ? '✅ Yes' : '❌ No'}</span>
+                      </div>
+                      <div className="detail-row">
+                        <span className="detail-label">Free Shipping</span>
+                        <span className="detail-value">{selectedVariant.is_free_shipping ? '✅ Yes' : '❌ No'}</span>
+                      </div>
+                      {selectedVariant.reason && (
+                        <div className="detail-row">
+                          <span className="detail-label">Reason</span>
+                          <span className="detail-value reason-text">{selectedVariant.reason}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="variant-detail-section actions-section">
+                      <h5 className="detail-section-title">Actions</h5>
+                      <div className="action-buttons-group horizontal">
+                        <button 
+                          className="action-btn approve-btn"
+                          onClick={() => {
+                            setSelectedVariantForAction(selectedVariant);
+                            setShowActionModal(true);
+                            setActionType('approve');
+                          }}
+                        >
+                          <FaCheckCircle /> Approve
+                        </button>
+                        <button 
+                          className="action-btn reject-btn"
+                          onClick={() => {
+                            setSelectedVariantForAction(selectedVariant);
+                            setShowActionModal(true);
+                            setActionType('reject');
+                          }}
+                        >
+                          <FaTimesCircle /> Reject
+                        </button>
+                        <button 
+                          className="action-btn suspend-btn"
+                          onClick={() => {
+                            setSelectedVariantForAction(selectedVariant);
+                            setShowActionModal(true);
+                            setActionType('suspend');
+                          }}
+                        >
+                          <FaBan /> Suspend
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ===== VARIANTS TABLE ===== */}
+            <div className="variants-table-wrapper">
+              <div className="table-header">
+                <h4>All Variants</h4>
+                <span className="variant-count">{filteredVariants.length} variants</span>
+              </div>
+              <div className="table-container">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th className="checkbox-cell">
+                        <input 
+                          type="checkbox"
+                          checked={selectedVariants.length === filteredVariants.length && filteredVariants.length > 0}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedVariants(filteredVariants.map(v => v.id));
+                            } else {
+                              setSelectedVariants([]);
+                            }
+                          }}
+                        />
+                      </th>
+                      <th>Image</th>
+                      <th onClick={() => handleSort('title')} className="sortable">
+                        Variant Name
+                        {sortField === 'title' && (sortDirection === 'asc' ? <FaSortUp /> : <FaSortDown />)}
+                        {sortField !== 'title' && <FaSort />}
+                      </th>
+                      <th onClick={() => handleSort('variant_code')} className="sortable">
+                        SKU
+                        {sortField === 'variant_code' && (sortDirection === 'asc' ? <FaSortUp /> : <FaSortDown />)}
+                        {sortField !== 'variant_code' && <FaSort />}
+                      </th>
+                      <th>Size</th>
+                      <th onClick={() => handleSort('mrp')} className="sortable">
+                        MRP (₹)
+                        {sortField === 'mrp' && (sortDirection === 'asc' ? <FaSortUp /> : <FaSortDown />)}
+                        {sortField !== 'mrp' && <FaSort />}
+                      </th>
+                      <th onClick={() => handleSort('selling_price')} className="sortable">
+                        Price (₹)
+                        {sortField === 'selling_price' && (sortDirection === 'asc' ? <FaSortUp /> : <FaSortDown />)}
+                        {sortField !== 'selling_price' && <FaSort />}
+                      </th>
+                      <th onClick={() => handleSort('stock')} className="sortable">
+                        Stock
+                        {sortField === 'stock' && (sortDirection === 'asc' ? <FaSortUp /> : <FaSortDown />)}
+                        {sortField !== 'stock' && <FaSort />}
+                      </th>
+                      <th onClick={() => handleSort('status')} className="sortable">
+                        Status
+                        {sortField === 'status' && (sortDirection === 'asc' ? <FaSortUp /> : <FaSortDown />)}
+                        {sortField !== 'status' && <FaSort />}
+                      </th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredVariants.map((variant) => (
+                      <tr 
+                        key={variant.id} 
+                        className={`${selectedVariant?.id === variant.id ? 'selected-row' : ''} ${
+                          selectedVariants.includes(variant.id) ? 'checkbox-selected' : ''
+                        }`}
+                        onClick={() => {
+                          setSelectedVariant(variant);
+                          setSelectedImage(null);
+                        }}
+                      >
+                        <td className="checkbox-cell" onClick={(e) => e.stopPropagation()}>
+                          <input 
+                            type="checkbox"
+                            checked={selectedVariants.includes(variant.id)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedVariants([...selectedVariants, variant.id]);
+                              } else {
+                                setSelectedVariants(selectedVariants.filter(id => id !== variant.id));
+                              }
+                            }}
+                          />
+                        </td>
+                        <td>
+                          <img 
+                            src={variant.media?.find(m => m.is_cover)?.media_url || variant.media?.[0]?.media_url || 'https://via.placeholder.com/50'}
+                            alt={variant.title}
+                            className="variant-image-small"
+                            onError={(e) => e.target.src = 'https://via.placeholder.com/50'}
+                          />
+                        </td>
+                        <td>
+                          <strong className="variant-name">{variant.title}</strong>
+                        </td>
+                        <td className="sku-code">{variant.variant_code}</td>
+                        <td>{variant.size} {variant.weightage}</td>
+                        <td>₹{parseFloat(variant.mrp).toFixed(2)}</td>
+                        <td>₹{parseFloat(variant.selling_price).toFixed(2)}</td>
+                        <td className={`stock-cell ${variant.stock < variant.low_stock_threshold ? 'low-stock' : ''}`}>
+                          {variant.stock}
+                          {variant.stock < variant.low_stock_threshold && 
+                            <span className="stock-warning-icon">⚠️</span>
+                          }
+                        </td>
+                        <td>{getStatusBadge(variant.status)}</td>
+                        <td onClick={(e) => e.stopPropagation()}>
+                          <div className="action-cell">
+                            <button 
+                              className="action-btn-icon view"
+                              onClick={() => {
+                                setSelectedVariantForAction(variant);
+                                setShowActionModal(true);
+                                setActionType('view');
+                              }}
+                              title="View Details"
+                            >
+                              <FaEye />
+                            </button>
+                            <button 
+                              className="action-btn-icon edit"
+                              title="Edit"
+                            >
+                              <FaEdit />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                    {filteredVariants.length === 0 && (
+                      <tr>
+                        <td colSpan="10" className="empty-state">
+                          <div className="empty-state-content">
+                            <FiPackage className="empty-icon" />
+                            <p>No variants found matching your filters</p>
+                            <button className="btn-outline-small" onClick={() => {
+                              setSearchTerm('');
+                              setStatusFilter('all');
+                            }}>
+                              Clear filters
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              <div className="table-footer">
+                <span>Showing {filteredVariants.length} of {variants.length} variants</span>
+                <div className="table-footer-actions">
+                  <button className="footer-btn" onClick={() => exportData('variants')}>
+                    <BsDownload /> Export
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ===== ORDERS TAB ===== */}
+        {activeTab === 'orders' && (
+          <div className="tab-content">
+            <div className="orders-section">
+              <div className="section-header">
+                <h4><FiShoppingBag className="section-icon" /> Order History</h4>
+                <div className="orders-summary">
+                  <span className="summary-item">
+                    <span className="summary-label">Total Orders</span>
+                    <strong>{orders.length}</strong>
+                  </span>
+                  <span className="summary-item">
+                    <span className="summary-label">Revenue</span>
+                    <strong className="revenue">{formatCurrency(orders.reduce((sum, o) => sum + o.amount, 0))}</strong>
+                  </span>
+                  <button className="btn-outline-small" onClick={() => exportData('orders')}>
+                    <BsDownload /> Export
+                  </button>
+                </div>
+              </div>
+              <div className="table-responsive">
+                <table className="data-table orders-table">
+                  <thead>
+                    <tr>
+                      <th>Order ID</th>
+                      <th>Customer</th>
+                      <th>Variant</th>
+                      <th>Qty</th>
+                      <th>Amount</th>
+                      <th>Date</th>
+                      <th>Payment</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {orders.map((order) => (
+                      <tr key={order.id} className="order-row">
+                        <td><span className="order-id">{order.id}</span></td>
+                        <td>
+                          <div className="customer-info">
+                            <span className="customer-name">{order.customer}</span>
+                            <span className="customer-email">{order.email}</span>
+                          </div>
+                        </td>
+                        <td>{order.variant}</td>
+                        <td className="qty-cell">{order.qty}x</td>
+                        <td className="amount-cell">{formatCurrency(order.amount)}</td>
+                        <td>{new Date(order.date).toLocaleDateString('en-US', { 
+                          month: 'short', 
+                          day: 'numeric',
+                          year: 'numeric'
+                        })}</td>
+                        <td><span className="payment-badge">{order.paymentMethod}</span></td>
+                        <td>{getOrderStatusBadge(order.status)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ===== REVIEWS TAB ===== */}
+        {activeTab === 'reviews' && (
+          <div className="tab-content">
+            <div className="reviews-section">
+              <div className="section-header">
+                <h4><FaStar className="section-icon" /> Customer Reviews</h4>
+                <div className="reviews-summary">
+                  <span className="summary-item">
+                    <span className="summary-label">Average Rating</span>
+                    <div className="rating-display">
+                      <strong>{reviews.length > 0 ? (reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length).toFixed(1) : 0}</strong>
+                      <div className="stars-display">
+                        {renderStars(reviews.length > 0 ? reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length : 0)}
+                      </div>
+                    </div>
+                  </span>
+                  <span className="summary-item">
+                    <span className="summary-label">Total Reviews</span>
+                    <strong>{reviews.length}</strong>
+                  </span>
+                  <button className="btn-outline-small" onClick={() => exportData('reviews')}>
+                    <BsDownload /> Export
+                  </button>
+                </div>
+              </div>
+              <div className="reviews-list">
+                {reviews.map((review) => (
+                  <div key={review.id} className="review-card">
+                    <div className="review-header">
+                      <div className="reviewer-info">
+                        <div className="reviewer-avatar">
+                          {review.customer.charAt(0)}
+                        </div>
+                        <div>
+                          <span className="reviewer-name">{review.customer}</span>
+                          <span className="review-variant">{review.variant}</span>
+                        </div>
+                      </div>
+                      <div className="review-actions">
+                        <div className="review-rating">
+                          {renderStars(review.rating)}
+                        </div>
+                        <span className="review-date">{new Date(review.date).toLocaleDateString('en-US', { 
+                          month: 'short', 
+                          day: 'numeric',
+                          year: 'numeric'
+                        })}</span>
+                      </div>
+                    </div>
+                    <p className="review-comment">"{review.comment}"</p>
+                    <div className="review-footer">
+                      <span className="helpful-count">
+                        <FaCheckCircle className="helpful-icon" /> {review.helpful} people found this helpful
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ===== ANALYTICS TAB ===== */}
+        {activeTab === 'analytics' && (
+          <div className="tab-content">
+            <div className="analytics-section">
+              <div className="analytics-grid">
+                <div className="analytics-card">
+                  <div className="analytics-header">
+                    <h4>Revenue Overview</h4>
+                    <span className="analytics-period">Last 7 days</span>
+                  </div>
+                  <div className="analytics-chart-placeholder">
+                    <div className="chart-bars">
+                      <div className="chart-bar" style={{ height: '60%' }}><span>Mon</span></div>
+                      <div className="chart-bar" style={{ height: '80%' }}><span>Tue</span></div>
+                      <div className="chart-bar" style={{ height: '45%' }}><span>Wed</span></div>
+                      <div className="chart-bar" style={{ height: '90%' }}><span>Thu</span></div>
+                      <div className="chart-bar" style={{ height: '70%' }}><span>Fri</span></div>
+                      <div className="chart-bar" style={{ height: '55%' }}><span>Sat</span></div>
+                      <div className="chart-bar" style={{ height: '75%' }}><span>Sun</span></div>
+                    </div>
+                  </div>
+                  <div className="analytics-stats">
+                    <div className="analytics-stat">
+                      <span className="stat-label">Revenue</span>
+                      <span className="stat-value">{formatCurrency(12500)}</span>
+                    </div>
+                    <div className="analytics-stat">
+                      <span className="stat-label">Orders</span>
+                      <span className="stat-value">42</span>
+                    </div>
+                    <div className="analytics-stat">
+                      <span className="stat-label">Conversion</span>
+                      <span className="stat-value">3.2%</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="analytics-card">
+                  <div className="analytics-header">
+                    <h4>Top Selling Variants</h4>
+                    <span className="analytics-period">This month</span>
+                  </div>
+                  <div className="top-variants-list">
+                    {variants.slice(0, 5).map((v, idx) => (
+                      <div key={v.id} className="top-variant-item">
+                        <span className="rank">#{idx + 1}</span>
+                        <span className="variant-name">{v.title}</span>
+                        <span className="variant-sales">{v.stock || 0} units</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ===== ACTION MODAL ===== */}
+      {showActionModal && selectedVariantForAction && (
+        <div className="modal-overlay" onClick={() => setShowActionModal(false)}>
+          <div className="modal-content animate-slide-up" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>
+                {actionType === 'approve' ? 'Approve' :
+                 actionType === 'reject' ? 'Reject' : 
+                 actionType === 'suspend' ? 'Suspend' : 'Variant Details'}
+              </h3>
+              <button className="modal-close" onClick={() => setShowActionModal(false)}>
+                <BsX />
+              </button>
+            </div>
+            <div className="modal-body">
+              {actionType === 'view' ? (
+                <div className="modal-variant-details">
+                  <div className="modal-image-section">
+                    <img 
+                      src={selectedVariantForAction.media?.find(m => m.is_cover)?.media_url || selectedVariantForAction.media?.[0]?.media_url || 'https://via.placeholder.com/200'}
+                      alt={selectedVariantForAction.title}
+                      className="modal-variant-image"
+                      onError={(e) => e.target.src = 'https://via.placeholder.com/200'}
+                    />
+                  </div>
+                  <div className="modal-variant-info">
+                    <div className="modal-info-row">
+                      <span className="modal-info-label">Title</span>
+                      <span className="modal-info-value">{selectedVariantForAction.title}</span>
+                    </div>
+                    <div className="modal-info-row">
+                      <span className="modal-info-label">SKU</span>
+                      <span className="modal-info-value sku-code">{selectedVariantForAction.variant_code}</span>
+                    </div>
+                    <div className="modal-info-row">
+                      <span className="modal-info-label">Size</span>
+                      <span className="modal-info-value">{selectedVariantForAction.size} {selectedVariantForAction.weightage}</span>
+                    </div>
+                    <div className="modal-info-row">
+                      <span className="modal-info-label">MRP</span>
+                      <span className="modal-info-value mrp">₹{parseFloat(selectedVariantForAction.mrp).toFixed(2)}</span>
+                    </div>
+                    <div className="modal-info-row">
+                      <span className="modal-info-label">Selling Price</span>
+                      <span className="modal-info-value selling">₹{parseFloat(selectedVariantForAction.selling_price).toFixed(2)}</span>
+                    </div>
+                    <div className="modal-info-row">
+                      <span className="modal-info-label">Stock</span>
+                      <span className="modal-info-value">{selectedVariantForAction.stock} units</span>
+                    </div>
+                    <div className="modal-info-row">
+                      <span className="modal-info-label">Status</span>
+                      <span className="modal-info-value">{getStatusBadge(selectedVariantForAction.status)}</span>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="modal-action-content">
+                  <div className="modal-variant-summary">
+                    <img 
+                      src={selectedVariantForAction.media?.find(m => m.is_cover)?.media_url || selectedVariantForAction.media?.[0]?.media_url || 'https://via.placeholder.com/60'}
+                      alt={selectedVariantForAction.title}
+                      className="modal-summary-image"
+                      onError={(e) => e.target.src = 'https://via.placeholder.com/60'}
+                    />
+                    <div>
+                      <div className="summary-title">{selectedVariantForAction.title}</div>
+                      <div className="summary-sku">{selectedVariantForAction.variant_code}</div>
+                    </div>
+                    <div className="summary-status">{getStatusBadge(selectedVariantForAction.status)}</div>
+                  </div>
+
+                  <div className="action-confirmation">
+                    <div className="confirmation-icon">
+                      {actionType === 'approve' && <FaCheckCircle className="icon-approve" />}
+                      {actionType === 'reject' && <FaTimesCircle className="icon-reject" />}
+                      {actionType === 'suspend' && <FaBan className="icon-suspend" />}
+                    </div>
+                    <h4>
+                      {actionType === 'approve' ? 'Approve this variant?' :
+                       actionType === 'reject' ? 'Reject this variant?' : 
+                       'Suspend this variant?'}
+                    </h4>
+                    <p>
+                      {actionType === 'approve' ? 'This will make the variant available for purchase.' :
+                       actionType === 'reject' ? 'This will reject the variant and hide it from the catalog.' : 
+                       'This will temporarily suspend the variant.'}
+                    </p>
+                  </div>
+
+                  {(actionType === 'reject' || actionType === 'suspend') && (
+                    <div className="form-group">
+                      <label htmlFor="reason">Reason for {actionType}ing:</label>
+                      <textarea
+                        id="reason"
+                        className="reason-input"
+                        rows="4"
+                        value={reason}
+                        onChange={(e) => setReason(e.target.value)}
+                        placeholder={`Please provide a detailed reason for ${actionType}ing this variant...`}
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button className="btn-secondary" onClick={() => setShowActionModal(false)}>
+                {actionType === 'view' ? 'Close' : 'Cancel'}
+              </button>
+              {actionType !== 'view' && (
+                <button
+                  className={`btn-${actionType}`}
+                  onClick={() => handleVariantAction(
+                    selectedVariantForAction.id,
+                    actionType,
+                    reason
+                  )}
+                  disabled={actionType !== 'approve' && !reason.trim()}
+                >
+                  {actionType === 'approve' ? 'Approve' :
+                   actionType === 'reject' ? 'Reject' : 'Suspend'}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+    
+    </div>
+  );
+}
+
+export default ProductDetail;
+
+/* ProductDetail.css - Professional Super Admin Product Detail Page */
+
+/* ============================================
+   CSS VARIABLES
+   ============================================ */
+:root {
+  /* Primary Colors - #0D614E */
+  --primary: #0D614E;
+  --primary-dark: #094E3E;
+  --primary-light: #1A8A70;
+  --primary-lighter: #E8F5F1;
+  --primary-gradient: linear-gradient(135deg, #0D614E, #1A8A70);
+  
+  /* Secondary Colors */
+  --secondary: #0EA5E9;
+  --secondary-light: #E0F2FE;
+  
+  /* Status Colors */
+  --success: #059669;
+  --success-light: #D1FAE5;
+  --success-bg: #ECFDF5;
+  
+  --warning: #D97706;
+  --warning-light: #FEF3C7;
+  --warning-bg: #FFFBEB;
+  
+  --danger: #DC2626;
+  --danger-light: #FEE2E2;
+  --danger-bg: #FEF2F2;
+  
+  --info: #3B82F6;
+  --info-light: #DBEAFE;
+  --info-bg: #EFF6FF;
+  
+  /* Neutral Colors */
+  --gray-50: #F8FAFC;
+  --gray-100: #F1F5F9;
+  --gray-150: #E9EDF2;
+  --gray-200: #E2E8F0;
+  --gray-300: #CBD5E1;
+  --gray-400: #94A3B8;
+  --gray-500: #64748B;
+  --gray-600: #475569;
+  --gray-700: #334155;
+  --gray-800: #1E293B;
+  --gray-900: #0F172A;
+  
+  /* Shadows */
+  --shadow-sm: 0 1px 2px rgba(13, 97, 78, 0.05);
+  --shadow: 0 1px 3px rgba(13, 97, 78, 0.08);
+  --shadow-md: 0 4px 12px rgba(13, 97, 78, 0.1);
+  --shadow-lg: 0 8px 32px rgba(13, 97, 78, 0.12);
+  --shadow-xl: 0 12px 48px rgba(13, 97, 78, 0.15);
+  
+  /* Border Radius */
+  --radius-sm: 6px;
+  --radius: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  
+  /* Transitions */
+  --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  
+  /* Spacing */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 20px;
+  --space-2xl: 24px;
+  --space-3xl: 32px;
+  --space-4xl: 40px;
+}
+
+/* ============================================
+   BASE CONTAINER
+   ============================================ */
+.product-detail-container {
+  padding: var(--space-2xl) var(--space-3xl);
+  background: var(--gray-50);
+  min-height: 100vh;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+
+/* ============================================
+   LOADING & ERROR STATES
+   ============================================ */
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+  gap: var(--space-xl);
+}
+
+.spinner {
+  width: 56px;
+  height: 56px;
+  border: 4px solid var(--gray-200);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.loading-text {
+  color: var(--gray-600);
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.loading-progress-bar {
+  width: 280px;
+  height: 6px;
+  background: var(--gray-200);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--primary-gradient);
+  border-radius: 3px;
+  animation: progress 1.5s ease-in-out infinite;
+}
+
+@keyframes progress {
+  0% { width: 0%; }
+  50% { width: 70%; }
+  100% { width: 100%; }
+}
+
+.error-container {
+  text-align: center;
+  padding: var(--space-4xl) var(--space-2xl);
+  background: white;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  max-width: 540px;
+  margin: 80px auto;
+}
+
+.error-icon {
+  font-size: 56px;
+  margin-bottom: var(--space-lg);
+}
+
+.error-container h3 {
+  color: var(--gray-900);
+  margin-bottom: var(--space-sm);
+  font-size: 22px;
+}
+
+.error-container p {
+  color: var(--gray-500);
+  margin-bottom: var(--space-xl);
+}
+
+/* ============================================
+   TOP NAVIGATION
+   ============================================ */
+.top-nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-md) 0;
+  margin-bottom: var(--space-xl);
+}
+
+.nav-left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-lg);
+}
+
+.back-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  background: white;
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius);
+  color: var(--gray-600);
+  cursor: pointer;
+  transition: var(--transition);
+  font-size: 20px;
+}
+
+.back-button:hover {
+  background: var(--gray-50);
+  border-color: var(--primary);
+  color: var(--primary);
+  transform: translateX(-3px);
+  box-shadow: var(--shadow-sm);
+}
+
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  font-size: 14px;
+  color: var(--gray-500);
+}
+
+.breadcrumb .separator {
+  color: var(--gray-300);
+}
+
+.breadcrumb .active {
+  color: var(--gray-800);
+  font-weight: 600;
+  background: var(--primary-lighter);
+  padding: 4px 12px;
+  border-radius: 100px;
+  font-size: 13px;
+}
+
+.nav-right {
+  display: flex;
+  gap: var(--space-sm);
+}
+
+.nav-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: 8px 16px;
+  background: white;
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius);
+  color: var(--gray-600);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.nav-btn:hover {
+  background: var(--gray-50);
+  border-color: var(--primary);
+  color: var(--primary);
+  box-shadow: var(--shadow-sm);
+}
+
+.nav-btn svg {
+  font-size: 16px;
+}
+
+/* ============================================
+   PRODUCT HEADER
+   ============================================ */
+.product-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: var(--space-lg);
+  background: white;
+  padding: var(--space-2xl) var(--space-3xl);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  margin-bottom: var(--space-2xl);
+  border-left: 5px solid var(--primary);
+}
+
+.product-title {
+  font-size: 30px;
+  font-weight: 700;
+  color: var(--gray-900);
+  margin: 0 0 var(--space-sm) 0;
+  letter-spacing: -0.5px;
+}
+
+.product-title::before {
+  content: '';
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  background: var(--primary);
+  border-radius: 50%;
+  margin-right: var(--space-md);
+  vertical-align: middle;
+}
+
+.product-meta-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+.meta-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: 4px 14px;
+  background: var(--gray-50);
+  border-radius: 100px;
+  font-size: 13px;
+  color: var(--gray-600);
+  border: 1px solid var(--gray-200);
+  transition: var(--transition);
+}
+
+.meta-tag:hover {
+  border-color: var(--primary);
+  background: var(--primary-lighter);
+}
+
+.meta-tag svg {
+  font-size: 14px;
+  color: var(--primary);
+}
+
+.product-header-right {
+  display: flex;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+}
+
+.btn-outline {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: 10px 22px;
+  background: white;
+  border: 2px solid var(--gray-200);
+  border-radius: var(--radius);
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--gray-700);
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.btn-outline:hover {
+  background: var(--gray-50);
+  border-color: var(--primary);
+  color: var(--primary);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: 10px 22px;
+  background: var(--primary-gradient);
+  border: none;
+  border-radius: var(--radius);
+  font-weight: 600;
+  font-size: 14px;
+  color: white;
+  cursor: pointer;
+  transition: var(--transition);
+  box-shadow: 0 4px 12px rgba(13, 97, 78, 0.3);
+}
+
+.btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(13, 97, 78, 0.4);
+}
+
+/* ============================================
+   STATS GRID
+   ============================================ */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--space-lg);
+  margin-bottom: var(--space-2xl);
+}
+
+.stat-card {
+  background: white;
+  border-radius: var(--radius-lg);
+  padding: var(--space-xl) var(--space-lg);
+  display: flex;
+  align-items: center;
+  gap: var(--space-lg);
+  box-shadow: var(--shadow);
+  transition: var(--transition);
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--gray-200);
+}
+
+.stat-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+}
+
+.stat-card::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  opacity: 0.05;
+  transform: translate(20px, -20px);
+}
+
+.stat-total::before { background: var(--primary); }
+.stat-total::after { background: var(--primary); }
+
+.stat-stock::before { background: var(--info); }
+.stat-stock::after { background: var(--info); }
+
+.stat-approved::before { background: var(--success); }
+.stat-approved::after { background: var(--success); }
+
+.stat-pending::before { background: var(--warning); }
+.stat-pending::after { background: var(--warning); }
+
+.stat-rejected::before { background: var(--danger); }
+.stat-rejected::after { background: var(--danger); }
+
+.stat-suspended::before { background: #8B5CF6; }
+.stat-suspended::after { background: #8B5CF6; }
+
+.stat-card:hover {
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-4px);
+  border-color: var(--primary);
+}
+
+.stat-icon-wrapper {
+  width: 52px;
+  height: 52px;
+  border-radius: var(--radius);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 1;
+}
+
+.variant-bg { background: var(--primary-lighter); }
+.stock-bg { background: var(--info-bg); }
+.success-bg { background: var(--success-bg); }
+.pending-bg { background: var(--warning-bg); }
+.danger-bg { background: var(--danger-bg); }
+.warning-bg { background: #F5F3FF; }
+
+.stat-icon {
+  width: 26px;
+  height: 26px;
+}
+
+.variant-bg .stat-icon { color: var(--primary); }
+.stock-bg .stat-icon { color: var(--info); }
+.success-bg .stat-icon { color: var(--success); }
+.pending-bg .stat-icon { color: var(--warning); }
+.danger-bg .stat-icon { color: var(--danger); }
+.warning-bg .stat-icon { color: #8B5CF6; }
+
+.stat-content {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+  z-index: 1;
+}
+
+.stat-number {
+  display: block;
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--gray-900);
+  line-height: 1.2;
+  letter-spacing: -0.5px;
+}
+
+.stat-label {
+  display: block;
+  font-size: 12px;
+  color: var(--gray-400);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-top: 2px;
+}
+
+.stat-trend {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 10px;
+  border-radius: 100px;
+  margin-top: 4px;
+}
+
+.stat-trend.up {
+  color: var(--success);
+  background: var(--success-bg);
+}
+
+.stat-trend.down {
+  color: var(--danger);
+  background: var(--danger-bg);
+}
+
+.stat-progress-bar {
+  width: 100%;
+  height: 5px;
+  background: var(--gray-200);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-top: 6px;
+}
+
+.stat-progress-fill {
+  height: 100%;
+  background: var(--primary-gradient);
+  border-radius: 3px;
+  transition: width 0.8s ease;
+}
+
+/* ============================================
+   TABS
+   ============================================ */
+.tabs-container {
+  background: white;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  border: 1px solid var(--gray-200);
+}
+
+.tabs-header {
+  display: flex;
+  gap: var(--space-xs);
+  padding: var(--space-md) var(--space-2xl) 0 var(--space-2xl);
+  border-bottom: 2px solid var(--gray-200);
+  background: var(--gray-50);
+}
+
+.tab-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: 12px 22px;
+  background: none;
+  border: none;
+  border-bottom: 3px solid transparent;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--gray-500);
+  cursor: pointer;
+  transition: var(--transition);
+  position: relative;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+}
+
+.tab-btn:hover {
+  color: var(--gray-800);
+  background: var(--gray-100);
+}
+
+.tab-btn.active {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+  background: white;
+}
+
+.tab-btn.active::after {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--primary-gradient);
+  border-radius: 2px;
+}
+
+.tab-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 10px;
+  background: var(--gray-200);
+  border-radius: 100px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--gray-600);
+  min-width: 22px;
+  height: 22px;
+}
+
+.tab-btn.active .tab-count {
+  background: var(--primary);
+  color: white;
+}
+
+.tab-content {
+  padding: var(--space-2xl);
+  animation: fadeIn 0.4s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ============================================
+   VARIANTS TOOLBAR
+   ============================================ */
+.variants-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-md);
+  margin-bottom: var(--space-xl);
+}
+
+.search-box {
+  display: flex;
+  align-items: center;
+  background: var(--gray-50);
+  border: 2px solid var(--gray-200);
+  border-radius: var(--radius);
+  padding: 0 var(--space-md);
+  transition: var(--transition);
+  flex: 1;
+  min-width: 240px;
+  max-width: 420px;
+}
+
+.search-box:focus-within {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 4px rgba(13, 97, 78, 0.1);
+  background: white;
+}
+
+.search-icon {
+  color: var(--gray-400);
+  font-size: 18px;
+}
+
+.search-box input {
+  flex: 1;
+  padding: 11px 12px;
+  border: none;
+  background: transparent;
+  font-size: 14px;
+  color: var(--gray-800);
+  outline: none;
+  font-weight: 500;
+}
+
+.search-box input::placeholder {
+  color: var(--gray-400);
+  font-weight: 400;
+}
+
+.clear-search {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  background: none;
+  border: none;
+  color: var(--gray-400);
+  cursor: pointer;
+  font-size: 20px;
+  transition: var(--transition);
+}
+
+.clear-search:hover {
+  color: var(--gray-600);
+}
+
+.toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.filter-wrapper {
+  position: relative;
+}
+
+.filter-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: 9px 16px;
+  background: white;
+  border: 2px solid var(--gray-200);
+  border-radius: var(--radius);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--gray-600);
+  cursor: pointer;
+  transition: var(--transition);
+  position: relative;
+}
+
+.filter-btn:hover {
+  background: var(--gray-50);
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.filter-active-dot {
+  width: 8px;
+  height: 8px;
+  background: var(--primary);
+  border-radius: 50%;
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  border: 2px solid white;
+}
+
+.filter-dropdown {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  background: white;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  min-width: 200px;
+  z-index: 100;
+  padding: var(--space-sm);
+  border: 1px solid var(--gray-200);
+  animation: slideDown 0.25s ease;
+}
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.filter-option {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 16px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--gray-700);
+  transition: var(--transition);
+  font-weight: 500;
+}
+
+.filter-option:hover {
+  background: var(--primary-lighter);
+  color: var(--primary);
+}
+
+.filter-option .filter-check {
+  color: var(--primary);
+  font-size: 18px;
+}
+
+/* ============================================
+   BULK ACTIONS
+   ============================================ */
+.bulk-actions-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-md);
+  padding: var(--space-lg) var(--space-xl);
+  background: var(--primary-lighter);
+  border-radius: var(--radius);
+  margin-bottom: var(--space-lg);
+  border: 2px solid var(--primary);
+}
+
+.bulk-count {
+  font-weight: 700;
+  color: var(--gray-700);
+  font-size: 14px;
+}
+
+.bulk-count strong {
+  color: var(--primary);
+}
+
+.bulk-actions {
+  display: flex;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+}
+
+.bulk-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: 6px 16px;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.bulk-btn.approve {
+  background: var(--success-bg);
+  color: var(--success);
+}
+
+.bulk-btn.approve:hover {
+  background: var(--success);
+  color: white;
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.bulk-btn.reject {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.bulk-btn.reject:hover {
+  background: var(--danger);
+  color: white;
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.bulk-btn.suspend {
+  background: var(--warning-bg);
+  color: var(--warning);
+}
+
+.bulk-btn.suspend:hover {
+  background: var(--warning);
+  color: white;
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.bulk-btn.clear {
+  background: var(--gray-200);
+  color: var(--gray-600);
+}
+
+.bulk-btn.clear:hover {
+  background: var(--gray-300);
+  transform: translateY(-1px);
+}
+
+/* ============================================
+   SELECTED VARIANT CARD
+   ============================================ */
+.selected-variant-card {
+  background: white;
+  border: 2px solid var(--primary);
+  border-radius: var(--radius-lg);
+  padding: var(--space-xl);
+  margin-bottom: var(--space-2xl);
+  box-shadow: 0 0 0 4px rgba(13, 97, 78, 0.06);
+}
+
+.animate-slide-down {
+  animation: slideDown 0.4s ease;
+}
+
+.variant-selector-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-md);
+  margin-bottom: var(--space-lg);
+}
+
+.variant-selector-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+}
+
+.title-icon {
+  color: var(--primary);
+  font-size: 22px;
+}
+
+.variant-selector-title h4 {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--gray-800);
+  margin: 0;
+}
+
+.variant-name-badge {
+  padding: 3px 14px;
+  background: var(--primary-lighter);
+  border-radius: 100px;
+  font-size: 13px;
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.variant-status-inline {
+  margin-left: var(--space-sm);
+}
+
+.btn-outline-small {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: 6px 16px;
+  background: white;
+  border: 2px solid var(--gray-200);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--gray-600);
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.btn-outline-small:hover {
+  background: var(--gray-50);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+/* ============================================
+   SELECTED VARIANT LAYOUT
+   ============================================ */
+.selected-variant-layout {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: var(--space-2xl);
+}
+
+/* Image Gallery */
+.variant-gallery {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.main-image-container {
+  position: relative;
+  background: var(--gray-50);
+  border-radius: var(--radius);
+  overflow: hidden;
+  aspect-ratio: 1;
+  border: 1px solid var(--gray-200);
+}
+
+.main-gallery-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: var(--transition);
+}
+
+.gallery-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid var(--gray-200);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: var(--transition);
+  color: var(--gray-700);
+  box-shadow: var(--shadow-sm);
+}
+
+.gallery-nav:hover {
+  background: white;
+  box-shadow: var(--shadow-md);
+  color: var(--primary);
+}
+
+.gallery-nav.prev {
+  left: var(--space-md);
+}
+
+.gallery-nav.next {
+  right: var(--space-md);
+}
+
+.image-counter {
+  position: absolute;
+  bottom: var(--space-md);
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.7);
+  color: white;
+  padding: 4px 14px;
+  border-radius: 100px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.no-image-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--gray-400);
+  gap: var(--space-sm);
+}
+
+.no-image-icon {
+  font-size: 48px;
+}
+
+.thumbnail-strip {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-sm);
+}
+
+.thumbnail-item {
+  aspect-ratio: 1;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  border: 2px solid var(--gray-200);
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.thumbnail-item:hover {
+  border-color: var(--primary);
+  transform: scale(1.03);
+}
+
+.thumbnail-item.active {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(13, 97, 78, 0.2);
+}
+
+.thumbnail-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Variant Details */
+.variant-gallery-details {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}
+
+.variant-detail-section {
+  background: var(--gray-50);
+  border-radius: var(--radius);
+  padding: var(--space-lg);
+  border: 1px solid var(--gray-200);
+  transition: var(--transition);
+}
+
+.variant-detail-section:hover {
+  border-color: var(--primary);
+  box-shadow: var(--shadow-sm);
+}
+
+.detail-section-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--gray-500);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 0 0 var(--space-md) 0;
+  padding-bottom: var(--space-sm);
+  border-bottom: 2px solid var(--gray-200);
+}
+
+.detail-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--gray-100);
+}
+
+.detail-row:last-child {
+  border-bottom: none;
+}
+
+.detail-label {
+  font-size: 14px;
+  color: var(--gray-500);
+  font-weight: 500;
+}
+
+.detail-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--gray-800);
+}
+
+.detail-value.highlight {
+  color: var(--primary);
+}
+
+.detail-value .sku-code {
+  font-family: 'Courier New', monospace;
+  color: var(--gray-600);
+  background: var(--gray-100);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.detail-value .mrp {
+  color: var(--gray-400);
+  text-decoration: line-through;
+  font-weight: 500;
+}
+
+.detail-value .selling {
+  color: var(--success);
+  font-weight: 700;
+}
+
+.detail-value .discount {
+  color: var(--danger);
+  font-weight: 700;
+  background: var(--danger-bg);
+  padding: 2px 10px;
+  border-radius: 100px;
+  font-size: 13px;
+}
+
+.detail-value .tax-tag {
+  display: inline-block;
+  padding: 2px 10px;
+  background: white;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--gray-600);
+  margin: 0 2px;
+  border: 1px solid var(--gray-200);
+}
+
+.detail-value.low-stock {
+  color: var(--danger);
+}
+
+.low-stock-warning {
+  font-size: 12px;
+  color: var(--danger);
+  font-weight: 500;
+  margin-left: var(--space-xs);
+  background: var(--danger-bg);
+  padding: 2px 8px;
+  border-radius: 100px;
+}
+
+.reason-text {
+  color: var(--danger);
+  font-weight: 500;
+  font-style: italic;
+}
+
+.actions-section .action-buttons-group.horizontal {
+  display: flex;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+}
+
+.action-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: 8px 18px;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.action-btn.approve-btn {
+  background: var(--success-bg);
+  color: var(--success);
+}
+
+.action-btn.approve-btn:hover {
+  background: var(--success);
+  color: white;
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.action-btn.reject-btn {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.action-btn.reject-btn:hover {
+  background: var(--danger);
+  color: white;
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.action-btn.suspend-btn {
+  background: var(--warning-bg);
+  color: var(--warning);
+}
+
+.action-btn.suspend-btn:hover {
+  background: var(--warning);
+  color: white;
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+/* ============================================
+   TABLE STYLES
+   ============================================ */
+.variants-table-wrapper {
+  margin-top: var(--space-sm);
+}
+
+.table-container {
+  overflow-x: auto;
+  border-radius: var(--radius);
+  border: 1px solid var(--gray-200);
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.data-table thead {
+  background: var(--gray-50);
+}
+
+.data-table thead tr {
+  border-bottom: 2px solid var(--gray-200);
+}
+
+.data-table th {
+  padding: 14px 18px;
+  text-align: left;
+  font-weight: 700;
+  color: var(--gray-500);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+.data-table th.sortable {
+  cursor: pointer;
+  user-select: none;
+  transition: var(--transition);
+}
+
+.data-table th.sortable:hover {
+  color: var(--primary);
+}
+
+.data-table th.sortable svg {
+  margin-left: var(--space-xs);
+  font-size: 12px;
+}
+
+.data-table td {
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--gray-100);
+  vertical-align: middle;
+}
+
+.data-table tbody tr {
+  transition: var(--transition);
+  cursor: pointer;
+}
+
+.data-table tbody tr:hover {
+  background: var(--gray-50);
+}
+
+.data-table tbody tr.selected-row {
+  background: var(--primary-lighter);
+  border-left: 3px solid var(--primary);
+}
+
+.data-table tbody tr.selected-row td:first-child {
+  border-left: 3px solid var(--primary);
+}
+
+.data-table tbody tr.checkbox-selected {
+  background: var(--success-bg);
+}
+
+.checkbox-cell {
+  width: 40px;
+  text-align: center;
+}
+
+.checkbox-cell input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: var(--primary);
+}
+
+.variant-image-small {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  border: 1px solid var(--gray-200);
+  transition: var(--transition);
+}
+
+.variant-image-small:hover {
+  transform: scale(1.1);
+  border-color: var(--primary);
+}
+
+.variant-name {
+  font-weight: 600;
+  color: var(--gray-800);
+}
+
+.sku-code {
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  color: var(--gray-500);
+  background: var(--gray-50);
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.stock-cell {
+  font-weight: 600;
+}
+
+.stock-cell.low-stock {
+  color: var(--danger);
+}
+
+.stock-warning-icon {
+  margin-left: var(--space-xs);
+  font-size: 14px;
+}
+
+/* ============================================
+   ACTION BUTTONS IN TABLE
+   ============================================ */
+.action-cell {
+  display: flex;
+  gap: var(--space-xs);
+  align-items: center;
+}
+
+.action-btn-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: var(--transition);
+  font-size: 15px;
+}
+
+.action-btn-icon.view {
+  color: var(--info);
+  background: transparent;
+}
+
+.action-btn-icon.view:hover {
+  background: var(--info-bg);
+  color: var(--info);
+  transform: scale(1.1);
+}
+
+.action-btn-icon.edit {
+  color: var(--primary);
+  background: transparent;
+}
+
+.action-btn-icon.edit:hover {
+  background: var(--primary-lighter);
+  color: var(--primary);
+  transform: scale(1.1);
+}
+
+/* ============================================
+   STATUS BADGES
+   ============================================ */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: 4px 14px;
+  border-radius: 100px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+}
+
+.badge-approved {
+  background: var(--success-bg);
+  color: var(--success);
+}
+
+.badge-pending {
+  background: var(--warning-bg);
+  color: var(--warning);
+}
+
+.badge-rejected {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.badge-suspended {
+  background: #F5F3FF;
+  color: #8B5CF6;
+}
+
+/* ============================================
+   ORDER STATUS
+   ============================================ */
+.order-status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: 4px 14px;
+  border-radius: 100px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.order-delivered {
+  background: var(--success-bg);
+  color: var(--success);
+}
+
+.order-shipped {
+  background: var(--info-bg);
+  color: var(--info);
+}
+
+.order-processing {
+  background: var(--warning-bg);
+  color: var(--warning);
+}
+
+.order-cancelled {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+/* ============================================
+   ORDERS SECTION
+   ============================================ */
+.orders-section,
+.reviews-section,
+.analytics-section {
+  padding: var(--space-xs) 0;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-md);
+  margin-bottom: var(--space-xl);
+}
+
+.section-header h4 {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--gray-800);
+  margin: 0;
+}
+
+.section-icon {
+  color: var(--primary);
+  font-size: 20px;
+}
+
+.orders-summary,
+.reviews-summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xl);
+  flex-wrap: wrap;
+}
+
+.summary-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.summary-label {
+  font-size: 11px;
+  color: var(--gray-400);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+}
+
+.summary-item strong {
+  font-size: 20px;
+  color: var(--gray-800);
+  font-weight: 700;
+}
+
+.summary-item .revenue {
+  color: var(--success);
+}
+
+.rating-display {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.stars-display {
+  display: flex;
+  gap: 2px;
+}
+
+.orders-table .customer-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.orders-table .customer-name {
+  font-weight: 600;
+  color: var(--gray-800);
+}
+
+.orders-table .customer-email {
+  font-size: 12px;
+  color: var(--gray-400);
+}
+
+.orders-table .qty-cell {
+  font-weight: 700;
+}
+
+.orders-table .amount-cell {
+  font-weight: 700;
+  color: var(--gray-800);
+}
+
+.payment-badge {
+  padding: 2px 12px;
+  background: var(--gray-100);
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--gray-600);
+}
+
+.order-id {
+  font-family: 'Courier New', monospace;
+  font-weight: 700;
+  color: var(--primary);
+}
+
+.table-responsive {
+  overflow-x: auto;
+}
+
+/* ============================================
+   REVIEWS
+   ============================================ */
+.reviews-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}
+
+.review-card {
+  background: var(--gray-50);
+  border-radius: var(--radius);
+  padding: var(--space-xl) var(--space-2xl);
+  border: 1px solid var(--gray-200);
+  transition: var(--transition);
+}
+
+.review-card:hover {
+  border-color: var(--primary);
+  box-shadow: var(--shadow-md);
+}
+
+.review-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-sm);
+}
+
+.reviewer-info {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+}
+
+.reviewer-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--primary-gradient);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 18px;
+}
+
+.reviewer-name {
+  font-weight: 700;
+  color: var(--gray-800);
+  display: block;
+}
+
+.review-variant {
+  font-size: 12px;
+  color: var(--gray-400);
+  font-weight: 500;
+}
+
+.review-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+}
+
+.review-rating {
+  display: flex;
+  gap: 2px;
+}
+
+.star-filled {
+  color: #F59E0B;
+  font-size: 16px;
+}
+
+.star-half {
+  color: #F59E0B;
+  font-size: 16px;
+}
+
+.star-empty {
+  color: var(--gray-300);
+  font-size: 16px;
+}
+
+.review-date {
+  font-size: 12px;
+  color: var(--gray-400);
+  font-weight: 500;
+}
+
+.review-comment {
+  margin: var(--space-sm) 0 var(--space-md) 0;
+  color: var(--gray-600);
+  line-height: 1.8;
+  font-style: italic;
+  font-size: 15px;
+}
+
+.review-footer {
+  display: flex;
+  gap: var(--space-lg);
+  font-size: 12px;
+  color: var(--gray-400);
+}
+
+.helpful-count {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  font-weight: 500;
+}
+
+.helpful-icon {
+  color: var(--success);
+}
+
+/* ============================================
+   ANALYTICS
+   ============================================ */
+.analytics-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: var(--space-xl);
+}
+
+.analytics-card {
+  background: var(--gray-50);
+  border-radius: var(--radius);
+  padding: var(--space-xl);
+  border: 1px solid var(--gray-200);
+  transition: var(--transition);
+}
+
+.analytics-card:hover {
+  border-color: var(--primary);
+  box-shadow: var(--shadow-sm);
+}
+
+.analytics-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-lg);
+}
+
+.analytics-header h4 {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--gray-800);
+  margin: 0;
+}
+
+.analytics-period {
+  font-size: 12px;
+  color: var(--gray-400);
+  font-weight: 500;
+  background: white;
+  padding: 4px 12px;
+  border-radius: 100px;
+  border: 1px solid var(--gray-200);
+}
+
+.analytics-chart-placeholder {
+  height: 220px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-around;
+  padding: var(--space-md) 0;
+}
+
+.chart-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-md);
+  width: 100%;
+  height: 100%;
+}
+
+.chart-bar {
+  flex: 1;
+  background: var(--primary-gradient);
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  min-height: 20px;
+  position: relative;
+  transition: var(--transition);
+}
+
+.chart-bar:hover {
+  opacity: 0.85;
+  transform: scaleY(1.05);
+  transform-origin: bottom;
+}
+
+.chart-bar span {
+  position: absolute;
+  bottom: -24px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 11px;
+  color: var(--gray-400);
+  font-weight: 500;
+}
+
+.analytics-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-md);
+  margin-top: var(--space-lg);
+}
+
+.analytics-stat {
+  text-align: center;
+  padding: var(--space-md);
+  background: white;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--gray-200);
+}
+
+.analytics-stat .stat-label {
+  display: block;
+  font-size: 11px;
+  color: var(--gray-400);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+}
+
+.analytics-stat .stat-value {
+  display: block;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--gray-800);
+  margin-top: var(--space-xs);
+}
+
+.top-variants-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.top-variant-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  padding: 10px 14px;
+  background: white;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--gray-200);
+  transition: var(--transition);
+}
+
+.top-variant-item:hover {
+  border-color: var(--primary);
+  transform: translateX(4px);
+}
+
+.top-variant-item .rank {
+  font-weight: 700;
+  color: var(--gray-400);
+  font-size: 14px;
+  min-width: 32px;
+}
+
+.top-variant-item .variant-name {
+  flex: 1;
+  font-weight: 600;
+  color: var(--gray-700);
+}
+
+.top-variant-item .variant-sales {
+  font-weight: 700;
+  color: var(--primary);
+  font-size: 14px;
+}
+
+/* ============================================
+   TABLE FOOTER
+   ============================================ */
+.table-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-md) var(--space-lg);
+  background: var(--gray-50);
+  border-top: 1px solid var(--gray-200);
+  font-size: 14px;
+  color: var(--gray-500);
+  font-weight: 500;
+}
+
+.table-footer-actions {
+  display: flex;
+  gap: var(--space-sm);
+}
+
+.footer-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: 6px 14px;
+  background: white;
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--gray-600);
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.footer-btn:hover {
+  background: var(--gray-50);
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+/* ============================================
+   EMPTY STATE
+   ============================================ */
+.empty-state {
+  text-align: center;
+  padding: var(--space-4xl) var(--space-xl);
+}
+
+.empty-state-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-lg);
+}
+
+.empty-icon {
+  font-size: 56px;
+  color: var(--gray-300);
+}
+
+.empty-state-content p {
+  color: var(--gray-500);
+  font-size: 15px;
+  font-weight: 500;
+}
+
+/* ============================================
+   MODAL
+   ============================================ */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: var(--space-xl);
+  backdrop-filter: blur(6px);
+}
+
+.modal-content {
+  background: white;
+  border-radius: var(--radius-lg);
+  max-width: 620px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: var(--shadow-xl);
+  animation: slideUp 0.35s ease;
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(30px) scale(0.96); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.modal-header {
+  padding: var(--space-xl) var(--space-2xl);
+  border-bottom: 2px solid var(--gray-200);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--gray-50);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+}
+
+.modal-header h3 {
+  font-size: 19px;
+  font-weight: 700;
+  color: var(--gray-800);
+  margin: 0;
+}
+
+.modal-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  background: white;
+  border: 1px solid var(--gray-200);
+  border-radius: 50%;
+  color: var(--gray-400);
+  cursor: pointer;
+  transition: var(--transition);
+  font-size: 20px;
+}
+
+.modal-close:hover {
+  background: var(--gray-100);
+  color: var(--gray-600);
+  transform: rotate(90deg);
+}
+
+.modal-body {
+  padding: var(--space-2xl);
+}
+
+.modal-footer {
+  padding: var(--space-lg) var(--space-2xl);
+  border-top: 2px solid var(--gray-200);
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-md);
+}
+
+/* ============================================
+   MODAL VARIANT DETAILS
+   ============================================ */
+.modal-variant-details {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: var(--space-xl);
+}
+
+.modal-image-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.modal-variant-image {
+  width: 100%;
+  height: 220px;
+  object-fit: cover;
+  border-radius: var(--radius);
+  border: 1px solid var(--gray-200);
+}
+
+.modal-thumbnail-small {
+  width: 60px;
+  height: 60px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--gray-200);
+}
+
+.modal-variant-info {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.modal-info-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--gray-100);
+}
+
+.modal-info-row:last-child {
+  border-bottom: none;
+}
+
+.modal-info-label {
+  font-size: 13px;
+  color: var(--gray-500);
+  font-weight: 500;
+}
+
+.modal-info-value {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--gray-800);
+}
+
+.modal-info-value .sku-code {
+  font-family: 'Courier New', monospace;
+  color: var(--gray-600);
+}
+
+.modal-info-value .mrp {
+  color: var(--gray-400);
+  text-decoration: line-through;
+}
+
+.modal-info-value .selling {
+  color: var(--success);
+}
+
+/* ============================================
+   MODAL ACTION CONTENT
+   ============================================ */
+.modal-action-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xl);
+}
+
+.modal-variant-summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  padding: var(--space-md) var(--space-lg);
+  background: var(--gray-50);
+  border-radius: var(--radius);
+  border: 1px solid var(--gray-200);
+}
+
+.modal-summary-image {
+  width: 52px;
+  height: 52px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+}
+
+.summary-title {
+  font-weight: 700;
+  color: var(--gray-800);
+  font-size: 15px;
+}
+
+.summary-sku {
+  font-size: 12px;
+  color: var(--gray-400);
+}
+
+.summary-status {
+  margin-left: auto;
+}
+
+.action-confirmation {
+  text-align: center;
+  padding: var(--space-lg);
+}
+
+.confirmation-icon {
+  font-size: 56px;
+  margin-bottom: var(--space-md);
+}
+
+.confirmation-icon .icon-approve {
+  color: var(--success);
+}
+
+.confirmation-icon .icon-reject {
+  color: var(--danger);
+}
+
+.confirmation-icon .icon-suspend {
+  color: var(--warning);
+}
+
+.action-confirmation h4 {
+  font-size: 19px;
+  color: var(--gray-800);
+  margin: 0 0 var(--space-sm) 0;
+  font-weight: 700;
+}
+
+.action-confirmation p {
+  color: var(--gray-500);
+  font-size: 14px;
+  margin: 0;
+}
+
+.form-group label {
+  display: block;
+  font-weight: 600;
+  color: var(--gray-700);
+  margin-bottom: var(--space-sm);
+  font-size: 14px;
+}
+
+.reason-input {
+  width: 100%;
+  padding: 12px 16px;
+  border: 2px solid var(--gray-200);
+  border-radius: var(--radius);
+  font-size: 14px;
+  font-family: inherit;
+  resize: vertical;
+  min-height: 80px;
+  transition: var(--transition);
+}
+
+.reason-input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 4px rgba(13, 97, 78, 0.1);
+}
+
+/* ============================================
+   MODAL FOOTER BUTTONS
+   ============================================ */
+.modal-footer .btn-approve,
+.modal-footer .btn-reject,
+.modal-footer .btn-suspend {
+  padding: 10px 28px;
+  border: none;
+  border-radius: var(--radius);
+  font-weight: 700;
+  font-size: 14px;
+  cursor: pointer;
+  transition: var(--transition);
+  color: white;
+}
+
+.modal-footer .btn-approve {
+  background: var(--primary-gradient);
+}
+
+.modal-footer .btn-approve:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.modal-footer .btn-reject {
+  background: var(--danger);
+}
+
+.modal-footer .btn-reject:hover {
+  background: #B91C1C;
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.modal-footer .btn-suspend {
+  background: var(--warning);
+}
+
+.modal-footer .btn-suspend:hover {
+  background: #B45309;
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.modal-footer .btn-approve:disabled,
+.modal-footer .btn-reject:disabled,
+.modal-footer .btn-suspend:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.btn-secondary {
+  padding: 10px 28px;
+  background: var(--gray-200);
+  border: none;
+  border-radius: var(--radius);
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--gray-700);
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.btn-secondary:hover {
+  background: var(--gray-300);
+}
+
+/* ============================================
+   RESPONSIVE DESIGN
+   ============================================ */
+@media (max-width: 1200px) {
+  .selected-variant-layout {
+    grid-template-columns: 280px 1fr;
+  }
+}
+
+@media (max-width: 1024px) {
+  .selected-variant-layout {
+    grid-template-columns: 1fr;
+  }
+  
+  .variant-gallery {
+    max-width: 400px;
+  }
+  
+  .analytics-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .modal-variant-details {
+    grid-template-columns: 1fr;
+  }
+  
+  .modal-variant-image {
+    height: 180px;
+    max-width: 300px;
+  }
+}
+
+@media (max-width: 768px) {
+  .product-detail-container {
+    padding: var(--space-md) var(--space-lg);
+  }
+  
+  .product-header {
+    padding: var(--space-lg);
+    flex-direction: column;
+  }
+  
+  .product-title {
+    font-size: 24px;
+  }
+  
+  .product-header-right {
+    width: 100%;
+  }
+  
+  .product-header-right .btn-outline,
+  .product-header-right .btn-primary {
+    flex: 1;
+    justify-content: center;
+  }
+  
+  .stats-grid {
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  }
+  
+  .stat-card {
+    padding: var(--space-md);
+  }
+  
+  .stat-number {
+    font-size: 20px;
+  }
+  
+  .stat-icon-wrapper {
+    width: 44px;
+    height: 44px;
+  }
+  
+  .stat-icon {
+    width: 22px;
+    height: 22px;
+  }
+  
+  .tabs-header {
+    padding: var(--space-sm) var(--space-lg) 0 var(--space-lg);
+    overflow-x: auto;
+  }
+  
+  .tab-btn {
+    padding: 10px 16px;
+    font-size: 13px;
+    white-space: nowrap;
+  }
+  
+  .tab-content {
+    padding: var(--space-lg);
+  }
+  
+  .selected-variant-card {
+    padding: var(--space-lg);
+  }
+  
+  .variant-selector-title {
+    flex-wrap: wrap;
+  }
+  
+  .variant-gallery {
+    max-width: 100%;
+  }
+  
+  .section-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .orders-summary,
+  .reviews-summary {
+    width: 100%;
+    justify-content: space-between;
+  }
+  
+  .review-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .modal-content {
+    margin: var(--space-md);
+  }
+  
+  .modal-variant-summary {
+    flex-wrap: wrap;
+  }
+  
+  .summary-status {
+    margin-left: 0;
+  }
+  
+  .breadcrumb {
+    display: none;
+  }
+  
+  .nav-right .nav-btn span {
+    display: none;
+  }
+  
+  .nav-right .nav-btn {
+    padding: 8px 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .stats-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-sm);
+  }
+  
+  .stat-card {
+    padding: var(--space-md);
+    flex-direction: column;
+    text-align: center;
+  }
+  
+  .stat-icon-wrapper {
+    width: 40px;
+    height: 40px;
+  }
+  
+  .stat-icon {
+    width: 20px;
+    height: 20px;
+  }
+  
+  .data-table th,
+  .data-table td {
+    padding: 8px 12px;
+    font-size: 12px;
+  }
+  
+  .variant-image-small {
+    width: 36px;
+    height: 36px;
+  }
+  
+  .top-nav {
+    flex-wrap: wrap;
+  }
+  
+  .nav-left {
+    flex: 1;
+  }
+  
+  .nav-right {
+    flex: 1;
+    justify-content: flex-end;
+  }
+  
+  .action-cell {
+    flex-direction: column;
+    gap: var(--space-xs);
+  }
+  
+  .action-btn-icon {
+    width: 30px;
+    height: 30px;
+    font-size: 13px;
+  }
+  
+  .bulk-actions {
+    flex-direction: column;
+    width: 100%;
+  }
+  
+  .bulk-btn {
+    justify-content: center;
+    width: 100%;
+  }
+  
+  .modal-footer {
+    flex-direction: column;
+  }
+  
+  .modal-footer .btn-approve,
+  .modal-footer .btn-reject,
+  .modal-footer .btn-suspend,
+  .modal-footer .btn-secondary {
+    width: 100%;
+    justify-content: center;
+  }
+  
+  .thumbnail-strip {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+/* ============================================
+   SCROLLBAR STYLING
+   ============================================ */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--gray-100);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--primary);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--primary-dark);
+}
+
+/* ============================================
+   PRINT STYLES
+   ============================================ */
+@media print {
+  .product-detail-container {
+    background: white;
+    padding: 20px;
+  }
+  
+  .top-nav,
+  .product-header-right,
+  .nav-btn,
+  .back-button,
+  .btn-outline,
+  .btn-primary,
+  .bulk-actions-bar,
+  .action-cell,
+  .checkbox-cell,
+  .filter-wrapper,
+  .view-toggle-group {
+    display: none !important;
+  }
+  
+  .stat-card {
+    break-inside: avoid;
+    border: 1px solid var(--gray-200);
+  }
+  
+  .selected-variant-card {
+    break-inside: avoid;
+    border: 1px solid var(--gray-200);
+  }
+  
+  .tabs-container {
+    break-inside: avoid;
+  }
+}
+
+/* ============================================
+   PRODUCT DETAILS SECTION (NEW)
+   ============================================ */
+.product-details-section {
+  background: white;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  padding: var(--space-2xl);
+  margin-bottom: var(--space-2xl);
+  border: 1px solid var(--gray-200);
+}
+
+.details-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-xl);
+  padding-bottom: var(--space-md);
+  border-bottom: 2px solid var(--gray-200);
+}
+
+.details-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--gray-800);
+  margin: 0;
+}
+
+.details-title-icon {
+  color: var(--primary);
+  font-size: 24px;
+}
+
+.product-id-badge {
+  padding: 4px 16px;
+  background: var(--gray-100);
+  border-radius: 100px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--gray-600);
+  font-family: 'Courier New', monospace;
+}
+
+.product-details-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2xl);
+}
+
+.details-column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xl);
+}
+
+.details-group {
+  background: var(--gray-50);
+  border-radius: var(--radius);
+  padding: var(--space-lg);
+  border: 1px solid var(--gray-200);
+  transition: var(--transition);
+  margin-top: 20px;
+}
+
+.details-group:hover {
+  border-color: var(--primary);
+  box-shadow: var(--shadow-sm);
+}
+
+.details-group.full-width {
+  grid-column: 1 / -1;
+}
+
+.details-group-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--gray-700);
+  margin: 0 0 var(--space-md) 0;
+  padding-bottom: var(--space-sm);
+  border-bottom: 2px solid var(--gray-200);
+}
+
+.group-icon {
+  color: var(--primary);
+  font-size: 18px;
+}
+
+.details-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--gray-100);
+}
+
+.details-row:last-child {
+  border-bottom: none;
+}
+
+.details-label {
+  font-size: 13px;
+  color: var(--gray-500);
+  font-weight: 500;
+}
+
+.details-value {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--gray-800);
+  text-align: right;
+}
+
+.details-value.brand-name {
+  color: var(--primary);
+}
+
+.details-value.vendor-name {
+  color: var(--info);
+}
+
+.details-value.id-text {
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  color: var(--gray-600);
+}
+
+.featured-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--success);
+  background: var(--success-bg);
+  padding: 2px 10px;
+  border-radius: 100px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.not-featured-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--gray-500);
+  background: var(--gray-100);
+  padding: 2px 10px;
+  border-radius: 100px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.yes-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--success);
+}
+
+.no-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--danger);
+}
+
+.product-description {
+  color: var(--gray-600);
+  line-height: 1.8;
+  margin: var(--space-sm) 0;
+  font-size: 14px;
+}
+
+.short-description,
+.how-to-use {
+  margin-top: var(--space-md);
+  padding-top: var(--space-md);
+  border-top: 1px solid var(--gray-200);
+}
+
+.short-description strong,
+.how-to-use strong {
+  display: block;
+  color: var(--gray-700);
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+
+.short-description p,
+.how-to-use p {
+  color: var(--gray-600);
+  line-height: 1.6;
+  margin: 0;
+  font-size: 14px;
+}
+
+/* ============================================
+   TABLE HEADER
+   ============================================ */
+.table-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-md);
+  padding: 0 var(--space-xs);
+}
+
+.table-header h4 {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--gray-800);
+  margin: 0;
+}
+
+.variant-count {
+  font-size: 13px;
+  color: var(--gray-500);
+  font-weight: 500;
+  background: var(--gray-100);
+  padding: 2px 12px;
+  border-radius: 100px;
+}
+
+/* ============================================
+   RESPONSIVE UPDATES
+   ============================================ */
+@media (max-width: 1024px) {
+  .product-details-grid {
+    grid-template-columns: 1fr;
+    gap: var(--space-lg);
+  }
+  
+  .details-group.full-width {
+    grid-column: 1;
+  }
+}
+
+@media (max-width: 768px) {
+  .product-details-section {
+    padding: var(--space-lg);
+  }
+  
+  .details-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-sm);
+  }
+  
+  .details-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+  }
+  
+  .details-value {
+    text-align: left;
+    width: 100%;
+  }
+  
+  .product-id-badge {
+    font-size: 11px;
+  }
+}
+
+@media (max-width: 480px) {
+  .details-group {
+    padding: var(--space-md);
+  }
+  
+  .details-group-title {
+    font-size: 13px;
+  }
+}
+
+
+please give me more good ui ux with good product presentation 
+
+api response => {
+  "product": {
+    "id": "23792390-aeb5-421d-be97-20eb00afe7b5",
+    "name": "Facewash",
+    "brand_name_id": "fb974602-8473-4405-8323-bb9f36b2c9d1",
+    "brand_name": "Himalaya",
+    "subcategory_id": null,
+    "subcategory": null,
+    "subcategory_image_url": null,
+    "product_category_id": null,
+    "product_category_name": null,
+    "customer_category_id": null,
+    "customer_category_name": null,
+    "vendor_id": "90b323d1-8596-4dfe-85f5-713354513698",
+    "vendor_business_name": "Beniwal's",
+    "vendor_phone_number": "+917733864142",
+    "manufacturer": "AyurMuni Labs",
+    "origin": "Facewash",
+    "short_description": "Facewash",
+    "full_description": "Facewash",
+    "how_to_use": "Facewash",
+    "health_disease_ids": [
+      "e71336d2-0f04-418b-a28e-44a7af6b72ab"
+    ],
+    "benifits": "Facewash",
+    "treatment_type": "",
+    "compositions": "Facewash",
+    "side_effects": "Facewash",
+    "dosages": "",
+    "safety_information": "Facewash",
+    "model_number": "",
+    "is_nutrition": true,
+    "is_featured": false,
+    "is_active": true,
+    "created_at": "2026-06-08T09:07:55.074531Z",
+    "updated_at": "2026-06-10T06:32:00.960624Z"
+  },
+  "variants": [
+    {
+      "id": "8cfb10b2-9ae1-47b2-90cd-e7c5071b5576",
+      "variant_code": "FAC-70462719",
+      "title": "Title",
+      "is_default": true,
+      "hsn_code": "456123",
+      "calculation_mode": "trade_price",
+      "cost_per_item": "5.00",
+      "quantity": null,
+      "size": "10",
+      "physical_state": "tablet",
+      "weightage": "pcs",
+      "selling_price": "50.00",
+      "vendor_price": null,
+      "taxes": [
+        {
+          "name": "GST",
+          "rate": 18
+        },
+        {
+          "name": "Platform Fee",
+          "rate": 10
+        }
+      ],
+      "mrp": "80.00",
+      "discount": null,
+      "stock": 520,
+      "low_stock_threshold": 10,
+      "is_free_shipping": false,
+      "shipping_amount": null,
+      "is_returnable": true,
+      "returnable_days": 3,
+      "pay_on_delivery": true,
+      "is_active": true,
+      "status": "approved",
+      "reason": null,
+      "approved_at": "2026-06-10T06:32:00.960471Z",
+      "created_at": "2026-06-08T09:07:55.389398Z",
+      "updated_at": "2026-06-08T09:07:55.389409Z",
+      "media": [
+        {
+          "id": "b4728937-adb9-4170-847f-f362b4ebf9f2",
+          "media_url": "https://ayurmuni.s3.ap-south-1.amazonaws.com/variants_images/7b8d853f64094dde9a84fa6a73e231fd.png",
+          "media_type": "image",
+          "is_cover": false
+        },
+        {
+          "id": "99854ec6-c288-49d4-8a1e-87ba95336691",
+          "media_url": "https://ayurmuni.s3.ap-south-1.amazonaws.com/variants_images/08af0c476d83413f8ec340c03da7c6a8.png",
+          "media_type": "image",
+          "is_cover": true
+        },
+        {
+          "id": "548bf22b-b617-4062-8715-7865eac97d9f",
+          "media_url": "https://ayurmuni.s3.ap-south-1.amazonaws.com/variants_images/73a6f6448db64ed785d48f37399a2df4.png",
+          "media_type": "image",
+          "is_cover": false
+        },
+        {
+          "id": "80163652-2cb1-498c-98ad-ef0ee4de3d5d",
+          "media_url": "https://ayurmuni.s3.ap-south-1.amazonaws.com/variants_images/9ddcfdf0ff154eb59b49af784efa8473.png",
+          "media_type": "image",
+          "is_cover": false
+        },
+        {
+          "id": "254dce81-5243-4aad-989b-e6f292c9e6c3",
+          "media_url": "https://ayurmuni.s3.ap-south-1.amazonaws.com/variants_images/173395866cb44d3b90f0656c122ad967.png",
+          "media_type": "image",
+          "is_cover": false
+        },
+        {
+          "id": "f4c2b583-a89e-4fd6-ab82-5f5f998f6f0f",
+          "media_url": "https://ayurmuni.s3.ap-south-1.amazonaws.com/variants_images/559b290092b249ba80d8673b4123679a.png",
+          "media_type": "image",
+          "is_cover": false
+        },
+        {
+          "id": "b431f5a4-e027-4584-8516-e752095c0d58",
+          "media_url": "https://ayurmuni.s3.ap-south-1.amazonaws.com/variants_images/876e10f9874b4c5e82b01bf9a5bb2a71.png",
+          "media_type": "image",
+          "is_cover": false
+        }
+      ],
+      "approved_by_id": "940dae10-0bfd-4308-96d9-2fc618d5575c",
+      "approved_by_phone": "+918950670093"
+    },
+    {
+      "id": "1e2c05a7-9ba8-4a3c-8f46-12aacec36218",
+      "variant_code": "FAC-70462719-COPY-4879",
+      "title": "Title  (Copy)",
+      "is_default": false,
+      "hsn_code": "456123",
+      "calculation_mode": "selling_price",
+      "cost_per_item": "5.00",
+      "quantity": null,
+      "size": "10",
+      "physical_state": "tablet",
+      "weightage": "pcs",
+      "selling_price": "50.00",
+      "vendor_price": null,
+      "taxes": [
+        {
+          "name": "GST",
+          "rate": 18
+        },
+        {
+          "name": "Platform Fee",
+          "rate": 10
+        }
+      ],
+      "mrp": "80.00",
+      "discount": null,
+      "stock": 520,
+      "low_stock_threshold": 10,
+      "is_free_shipping": false,
+      "shipping_amount": null,
+      "is_returnable": true,
+      "returnable_days": 3,
+      "pay_on_delivery": true,
+      "is_active": true,
+      "status": "approved",
+      "reason": null,
+      "approved_at": "2026-06-10T06:32:00.960471Z",
+      "created_at": "2026-06-08T09:07:56.148000Z",
+      "updated_at": "2026-06-08T09:07:56.148012Z",
+      "media": [
+        {
+          "id": "267f68ae-410a-4aaf-8e2c-16bc707e7d03",
+          "media_url": "https://ayurmuni.s3.ap-south-1.amazonaws.com/variants_images/7b8d853f64094dde9a84fa6a73e231fd.png",
+          "media_type": "image",
+          "is_cover": false
+        },
+        {
+          "id": "5398a056-755e-4414-a3ff-1e16648c96b6",
+          "media_url": "https://ayurmuni.s3.ap-south-1.amazonaws.com/variants_images/08af0c476d83413f8ec340c03da7c6a8.png",
+          "media_type": "image",
+          "is_cover": false
+        },
+        {
+          "id": "200d5620-a9eb-417c-9274-0844a37bde2e",
+          "media_url": "https://ayurmuni.s3.ap-south-1.amazonaws.com/variants_images/73a6f6448db64ed785d48f37399a2df4.png",
+          "media_type": "image",
+          "is_cover": false
+        },
+        {
+          "id": "cd0658a4-6339-4d05-93e9-d0c4e304e5e1",
+          "media_url": "https://ayurmuni.s3.ap-south-1.amazonaws.com/variants_images/9ddcfdf0ff154eb59b49af784efa8473.png",
+          "media_type": "image",
+          "is_cover": false
+        },
+        {
+          "id": "273cd562-d412-4c56-81fb-3642417a1959",
+          "media_url": "https://ayurmuni.s3.ap-south-1.amazonaws.com/variants_images/173395866cb44d3b90f0656c122ad967.png",
+          "media_type": "image",
+          "is_cover": false
+        },
+        {
+          "id": "f4e0be98-6b60-4520-a3cb-c360faffda22",
+          "media_url": "https://ayurmuni.s3.ap-south-1.amazonaws.com/variants_images/559b290092b249ba80d8673b4123679a.png",
+          "media_type": "image",
+          "is_cover": false
+        },
+        {
+          "id": "4e722594-8be8-4b45-bd49-349db3fe8922",
+          "media_url": "https://ayurmuni.s3.ap-south-1.amazonaws.com/variants_images/876e10f9874b4c5e82b01bf9a5bb2a71.png",
+          "media_type": "image",
+          "is_cover": true
+        }
+      ],
+      "approved_by_id": "940dae10-0bfd-4308-96d9-2fc618d5575c",
+      "approved_by_phone": "+918950670093"
+    },
+    {
+      "id": "622327f5-8dda-4b34-b1fb-dfabf27ee299",
+      "variant_code": "FAC-40719107",
+      "title": "Title",
+      "is_default": false,
+      "hsn_code": "9262626",
+      "calculation_mode": "selling_price",
+      "cost_per_item": "1.00",
+      "quantity": null,
+      "size": "50",
+      "physical_state": "tablet",
+      "weightage": "pcs",
+      "selling_price": "12.00",
+      "vendor_price": null,
+      "taxes": [
+        {
+          "name": "GST",
+          "rate": 18
+        },
+        {
+          "name": "Platform Fee",
+          "rate": 10
+        }
+      ],
+      "mrp": "50.00",
+      "discount": null,
+      "stock": 45,
+      "low_stock_threshold": 10,
+      "is_free_shipping": false,
+      "shipping_amount": null,
+      "is_returnable": true,
+      "returnable_days": 4,
+      "pay_on_delivery": true,
+      "is_active": true,
+      "status": "approved",
+      "reason": null,
+      "approved_at": "2026-06-10T06:32:00.960471Z",
+      "created_at": "2026-06-08T09:07:56.764541Z",
+      "updated_at": "2026-06-08T09:07:56.764563Z",
+      "media": [
+        {
+          "id": "6f15a97e-b521-4d9f-a536-43700cb9d97e",
+          "media_url": "https://ayurmuni.s3.ap-south-1.amazonaws.com/variants_images/33b35b7849324dbca2333137d053482f.png",
+          "media_type": "image",
+          "is_cover": false
+        },
+        {
+          "id": "d318c9ed-05be-477b-a106-e28848a5b810",
+          "media_url": "https://ayurmuni.s3.ap-south-1.amazonaws.com/variants_images/99d43794ce5c430ca0e2b210995ebb57.png",
+          "media_type": "image",
+          "is_cover": false
+        },
+        {
+          "id": "1e0294f0-6cbc-4dcb-b49c-74d10a3180cb",
+          "media_url": "https://ayurmuni.s3.ap-south-1.amazonaws.com/variants_images/ce1c656cdaca4e0bb0ce90913a1a7953.png",
+          "media_type": "image",
+          "is_cover": false
+        },
+        {
+          "id": "aa0d535b-ef07-46b6-9aab-cb8fb7192b26",
+          "media_url": "https://ayurmuni.s3.ap-south-1.amazonaws.com/variants_images/d46e080a38b54e228a286dd1506142dc.png",
+          "media_type": "image",
+          "is_cover": false
+        },
+        {
+          "id": "9f0cebe8-82df-44c7-93ae-692d71e052a9",
+          "media_url": "https://ayurmuni.s3.ap-south-1.amazonaws.com/variants_images/068afef2a7eb4b5cb1cfc589d7b24f67.png",
+          "media_type": "image",
+          "is_cover": false
+        },
+        {
+          "id": "37144ad4-afa1-417e-baec-5a8812178c2a",
+          "media_url": "https://ayurmuni.s3.ap-south-1.amazonaws.com/variants_images/b6975313d3f442aaafff5b8550e7a010.png",
+          "media_type": "image",
+          "is_cover": true
+        },
+        {
+          "id": "35bf62ea-aa88-44c6-aafd-679b09187e53",
+          "media_url": "https://ayurmuni.s3.ap-south-1.amazonaws.com/variants_images/66794f3b956c4c3491934877cadd48cd.png",
+          "media_type": "image",
+          "is_cover": false
+        }
+      ],
+      "approved_by_id": "940dae10-0bfd-4308-96d9-2fc618d5575c",
+      "approved_by_phone": "+918950670093"
+    }
+  ]
+}

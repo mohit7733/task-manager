@@ -17,7 +17,7 @@ import {
   Building2,
 } from "lucide-react";
 import api from "../api/client";
-import { formatResponsiblePerson } from "../utils/format";
+import { fmtDate, formatResponsiblePerson } from "../utils/format";
 import { apiEventToFullCalendar, deptTaskEventToFullCalendar } from "../utils/calendar";
 import PageHeader from "../components/PageHeader";
 import LoadingSpinner from "../components/LoadingSpinner";
@@ -76,6 +76,9 @@ function CalendarPanel({ loading, view, events, onEventClick, onEventDrop, empty
       nowIndicator
       eventTimeFormat={{ hour: "2-digit", minute: "2-digit", hour12: true }}
       headerToolbar={{ left: "prev,next today", center: "title", right: "" }}
+      dayMaxEventRows={3}
+      moreLinkClick="popover"
+      eventDisplay="block"
     />
   );
 }
@@ -140,7 +143,19 @@ export default function CalendarPage() {
   const loading = tab === "meeting" ? loadingMeeting : loadingDept;
 
   const onEventClick = (info) => {
-    setSelected(info.event.extendedProps);
+    const props = info.event.extendedProps || {};
+    const start = info.event.start;
+    setSelected({
+      ...props,
+      title: props.title || info.event.title,
+      date: props.date || (start ? start.toISOString() : null),
+      allDay: props.allDay ?? info.event.allDay,
+      time:
+        props.time ||
+        (!info.event.allDay && start
+          ? `${String(start.getHours()).padStart(2, "0")}:${String(start.getMinutes()).padStart(2, "0")}`
+          : ""),
+    });
   };
 
   const onMeetingDrop = async (info) => {
@@ -213,6 +228,9 @@ export default function CalendarPage() {
   const kindLabel = isDept
     ? DEPT_KIND_LABELS[selected?.kind] || selected?.label
     : MEETING_KIND_LABELS[selected?.kind] || selected?.label;
+  const assignees = Array.isArray(selected?.assigned_to)
+    ? selected.assigned_to.map((u) => u?.name).filter(Boolean).join(", ")
+    : selected?.assigned_to || formatResponsiblePerson(selected?.responsible_person);
 
   return (
     <div className="space-y-5">
@@ -326,7 +344,7 @@ export default function CalendarPage() {
               initial={{ opacity: 0, scale: 0.96 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.96 }}
-              className="relative z-10 w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-slate-900"
+              className="relative z-10 w-full max-w-2xl overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-slate-900"
               onClick={(e) => e.stopPropagation()}
             >
               <div className={brand.modalHeader}>
@@ -341,14 +359,21 @@ export default function CalendarPage() {
                 </div>
               </div>
 
-              <div className="space-y-3 px-5 py-4 text-sm">
-                <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
-                  <Clock className="h-4 w-4 text-slate-400" />
-                  <span>
-                    {fmtDate(selected.date, "EEEE, d MMM yyyy")}
-                    {selected.time ? ` at ${selected.time}` : " (all day)"}
-                  </span>
+              <div className="max-h-[70vh] space-y-4 overflow-y-auto px-5 py-4 text-sm">
+                <div className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-slate-700 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-200 sm:grid-cols-2">
+                  <div className="flex items-center gap-2">
+                    <Clock className="h-4 w-4 text-slate-400" />
+                    <span className="font-medium">
+                      {fmtDate(selected.date, "EEEE, d MMM yyyy")}
+                      {selected.time ? ` at ${selected.time}` : " (all day)"}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Tag className="h-4 w-4 text-slate-400" />
+                    <span>{kindLabel || "Event"}</span>
+                  </div>
                 </div>
+
                 <div className="flex flex-wrap gap-2">
                   <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium dark:bg-slate-800">
                     {selected.status}
@@ -370,13 +395,19 @@ export default function CalendarPage() {
                     </span>
                   )}
                 </div>
-                {(selected.assigned_to || formatResponsiblePerson(selected.responsible_person)) && (
+                {assignees && (
                   <p className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
                     <User className="h-4 w-4" />
-                    {Array.isArray(selected.assigned_to)
-                      ? selected.assigned_to.map((u) => u.name).filter(Boolean).join(", ")
-                      : selected.assigned_to || formatResponsiblePerson(selected.responsible_person)}
+                    {assignees}
                   </p>
+                )}
+                {selected.description && (
+                  <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">
+                    <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                      Description
+                    </p>
+                    <p>{selected.description}</p>
+                  </div>
                 )}
                 {selected.discussion_topic && (
                   <p className="flex items-start gap-2 text-gray-600 dark:text-gray-400">
@@ -414,6 +445,18 @@ export default function CalendarPage() {
                     <strong>Outcome:</strong> {selected.final_outcome}
                   </p>
                 )}
+                {!selected.description &&
+                  !selected.discussion_topic &&
+                  !selected.remark_description &&
+                  !selected.pending_reason &&
+                  !selected.latest_pending_reason &&
+                  !selected.next_agenda &&
+                  !selected.next_followup_note &&
+                  !selected.final_outcome && (
+                    <p className="rounded-lg bg-slate-50 px-3 py-2 text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                      No additional notes available for this event.
+                    </p>
+                  )}
               </div>
 
               <div className={brand.modalFooter}>

@@ -9,7 +9,7 @@ const TaskRemark = require("../tasks/taskRemark.model");
 const DEFAULT_EXPIRY_DAYS = Number(process.env.SHARE_LINK_EXPIRY_DAYS || 90);
 
 function appUrl() {
-  return process.env.APP_URL || "http://localhost:5173";
+  return process.env.APP_URL || "https://civilmantra-task-manager.vercel.app";
 }
 
 function shareUrl(token) {
