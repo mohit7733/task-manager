@@ -11,6 +11,7 @@ import MeetingsPage from "./pages/MeetingsPage";
 import TasksPage from "./pages/TasksPage";
 import CalendarPage from "./pages/CalendarPage";
 import { FollowupsPage, ReportsPage, SettingsPage } from "./pages/SimplePages";
+import ExternalUsersPage from "./pages/ExternalUsersPage";
 import api from "./api/client";
 import { setSession, logout, toggleTheme } from "./store/store";
 import { brand } from "./utils/theme";
@@ -64,6 +65,7 @@ function AppShell() {
             <Route path="/meetings" element={<MeetingsPage />} />
             <Route path="/tasks" element={<TasksPage />} />
             <Route path="/calendar" element={<CalendarPage />} />
+            <Route path="/external-users" element={<ExternalUsersPage />} />
             <Route path="/followups" element={<FollowupsPage />} />
             <Route path="/reports" element={<ReportsPage />} />
             <Route path="/settings" element={<SettingsPage />} />

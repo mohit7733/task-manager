@@ -563,7 +563,7 @@ export function SettingsPage() {
       <PageHeader title="Settings" subtitle="Manage your preferences and quick notes" icon={Save} />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <div className="lg:col-span-2">
+        {/* <div className="lg:col-span-2">
           <div className={brand.card}>
             <div className={brand.cardHeader}>
               <h3 className={`flex items-center gap-2 font-semibold text-slate-900 dark:text-white`}>
@@ -654,7 +654,9 @@ export function SettingsPage() {
               </div>
             </div>
           </div>
-        </div>
+        </div> */}
+
+        
 
         <div className="space-y-6">
           <div className={`${brand.card} p-6`}>

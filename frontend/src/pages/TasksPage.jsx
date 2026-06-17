@@ -7,6 +7,7 @@ import FormModal, { FieldLabel, fieldClass, FormSection } from "../components/Fo
 import LoadingSpinner from "../components/LoadingSpinner";
 import { brand } from "../utils/theme";
 import { toInputDate } from "../utils/format";
+import { mergeUserLists, userSearchText, matchAssigneeKeys } from "../utils/users";
 
 function taskToForm(t) {
   return {
@@ -33,36 +34,6 @@ const EMPTY_FORM = {
   next_review_date: "",
   weekly_meeting_day: "",
 };
-
-function splitCSV(value) {
-  return (value || "")
-    .split(",")
-    .map((v) => v.trim())
-    .filter(Boolean);
-}
-
-function getUserEmail(user) {
-  return (
-    user?.user_detail ||
-    ""
-  );
-}
-
-function getUserKey(user) {
-  return String(user?.emp_code || user?.id || user?._id || user?.name || "");
-}
-
-function normalizeUsers(rawUsers) {
-  return (Array.isArray(rawUsers) ? rawUsers : [])
-    .map((u) => ({
-      key: getUserKey(u),
-      name: (u?.name || "").trim(),
-      emp_code: (u?.emp_code || "").trim(),
-      department_name: (u?.department_name || "").trim(),
-      email: getUserEmail(u).trim(),
-    }))
-    .filter((u) => u.key && u.name);
-}
 
 export default function TasksPage() {
   const [tasks, setTasks] = useState([]);
@@ -94,9 +65,7 @@ export default function TasksPage() {
   const filteredUsers = useMemo(() => {
     const term = assigneeSearch.trim().toLowerCase();
     if (!term) return users;
-    return users.filter((u) =>
-      `${u.name} ${u.emp_code} ${u.email} ${u.department_name}`.toLowerCase().includes(term)
-    );
+    return users.filter((u) => userSearchText(u).includes(term));
   }, [users, assigneeSearch]);
   const availableUsers = useMemo(
     () => filteredUsers.filter((u) => !selectedAssigneeKeys.includes(u.key)),
@@ -115,15 +84,16 @@ export default function TasksPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const [listRes, statsRes, users, departments] = await Promise.all([
+      const [listRes, statsRes, hrmsUsers, departments, externalRes] = await Promise.all([
         api.get("/tasks", { params: { ...apiFilters, limit: 100 } }),
         api.get("/tasks/stats"),
         fetch("https://hrms.aimantra.info/wfm/ourcompanyuserlessdetail/v3/null/null/").then(res => res.json()),
         fetch("https://hrms.aimantra.info/wfm/department/").then(res => res.json()),
+        api.get("/external-users", { params: { limit: 500 } }),
       ]);
       setTasks(listRes.data.items);
       setStats(statsRes.data);
-      setUsers(normalizeUsers(users));
+      setUsers(mergeUserLists(hrmsUsers, externalRes.data.items));
       setDepartments(departments);
     } catch (error) {
       console.error("Failed to load tasks:", error);
@@ -166,10 +136,7 @@ export default function TasksPage() {
 
   const openEditModal = (task) => {
     const nextForm = taskToForm(task);
-    const existingAssignees = nextForm.assigned_to.map((u) => u.emp_code?.toLowerCase());
-    const matchedKeys = users
-      .filter((u) => existingAssignees.includes((u.emp_code || "").trim().toLowerCase()))
-      .map((u) => u.key);
+    const matchedKeys = matchAssigneeKeys(users, nextForm.assigned_to);
     setEditingId(task._id);
     setFormData(nextForm);
     setAssigneeSearch("");
@@ -458,7 +425,7 @@ export default function TasksPage() {
                     setIsAssigneeListOpen(true);
                   }}
                   className={fieldClass}
-                  placeholder="Search by name, emp code, department"
+                  placeholder="Search by name, emp code, department, or company"
                 />
                 {isAssigneeListOpen && (
                   <div className="mt-2 max-h-52 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
@@ -482,7 +449,9 @@ export default function TasksPage() {
                             <div className="min-w-0 leading-5 text-slate-700 dark:text-slate-200">
                               <p className="truncate font-medium">{u.name}</p>
                               <p className="truncate text-xs text-slate-500 dark:text-slate-400">
-                                {u.emp_code || "No code"} {u.department_name ? `| ${u.department_name}` : ""}
+                                {u.is_external ? "External" : u.emp_code || "No code"}
+                                {u.department_name ? ` | ${u.department_name}` : ""}
+                                {u.company ? ` | ${u.company}` : ""}
                                 {u.email ? ` | ${u.email}` : ""}
                               </p>
                             </div>

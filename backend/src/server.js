@@ -13,6 +13,7 @@ const remarkRoutes = require("./remarks/remarks.routes");
 const notificationRoutes = require("./notifications/notifications.routes");
 const dashboardRoutes = require("./dashboard/dashboard.routes");
 const taskRoutes = require("./tasks/tasks.routes");
+const externalUserRoutes = require("./externalUsers/externalUsers.routes");
 const publicShareRoutes = require("./share/share.routes");
 const { startReminderEngine } = require("./notifications/reminderCron");
 
@@ -40,6 +41,7 @@ app.use("/api/remarks", remarkRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/tasks", taskRoutes);
+app.use("/api/external-users", externalUserRoutes);
 
 app.use(notFound);
 app.use(errorHandler);

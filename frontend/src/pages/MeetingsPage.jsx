@@ -21,6 +21,7 @@ import EmptyState from "../components/EmptyState";
 import { buildFormData } from "../utils/upload";
 import { toInputDate } from "../utils/format";
 import { brand } from "../utils/theme";
+import { mergeUserLists, userSearchText, matchAssigneeKeys } from "../utils/users";
 
 function meetingToForm(m) {
   return {
@@ -55,26 +56,6 @@ const EMPTY_FORM = {
   recurrence: "None",
   meeting_link: "",
 };
-
-function getUserEmail(user) {
-  return (user?.user_detail || user?.email || user?.work_email || user?.official_email || "").trim();
-}
-
-function getUserKey(user) {
-  return String(user?.emp_code || user?.id || user?._id || user?.name || "");
-}
-
-function normalizeUsers(rawUsers) {
-  return (Array.isArray(rawUsers) ? rawUsers : [])
-    .map((u) => ({
-      key: getUserKey(u),
-      name: (u?.name || "").trim(),
-      emp_code: (u?.emp_code || "").trim(),
-      department_name: (u?.department_name || "").trim(),
-      email: getUserEmail(u),
-    }))
-    .filter((u) => u.key && u.name);
-}
 
 export default function MeetingsPage() {
   const [searchParams] = useSearchParams();
@@ -116,9 +97,7 @@ export default function MeetingsPage() {
   const filteredUsers = useMemo(() => {
     const term = responsibleSearch.trim().toLowerCase();
     if (!term) return users;
-    return users.filter((u) =>
-      `${u.name} ${u.emp_code} ${u.email} ${u.department_name}`.toLowerCase().includes(term)
-    );
+    return users.filter((u) => userSearchText(u).includes(term));
   }, [users, responsibleSearch]);
 
   const availableUsers = useMemo(
@@ -137,13 +116,14 @@ export default function MeetingsPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const [meetingsRes, usersRes] = await Promise.all([
+      const [meetingsRes, usersRes, externalRes] = await Promise.all([
         api.get("/meetings", { params: { ...filters, limit: 25 } }),
         fetch("https://hrms.aimantra.info/wfm/ourcompanyuserlessdetail/v3/null/null/").then((res) => res.json()),
+        api.get("/external-users", { params: { limit: 500 } }),
       ]);
       const items = meetingsRes.data.items;
       setMeetings(items);
-      setUsers(normalizeUsers(usersRes));
+      setUsers(mergeUserLists(usersRes, externalRes.data.items));
       setStats({
         total: items.length,
         pending: items.filter((m) => m.status === "Pending").length,
@@ -198,10 +178,7 @@ export default function MeetingsPage() {
 
   const openEditModal = (meeting) => {
     const nextForm = meetingToForm(meeting);
-    const existingCodes = nextForm.responsible_person.map((u) => u.emp_code?.toLowerCase());
-    const matchedKeys = users
-      .filter((u) => existingCodes.includes((u.emp_code || "").trim().toLowerCase()))
-      .map((u) => u.key);
+    const matchedKeys = matchAssigneeKeys(users, nextForm.responsible_person);
     setEditingId(meeting._id);
     setFormData(nextForm);
     setAttachmentFile(null);
@@ -537,7 +514,7 @@ export default function MeetingsPage() {
                   setIsResponsibleListOpen(true);
                 }}
                 className={fieldClass}
-                placeholder="Search by name, emp code, department"
+                placeholder="Search by name, emp code, department, or company"
               />
               {isResponsibleListOpen && (
                 <div className="mt-2 max-h-52 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
@@ -560,7 +537,9 @@ export default function MeetingsPage() {
                         <div className="min-w-0 leading-5 text-slate-700 dark:text-slate-200">
                           <p className="truncate font-medium">{u.name}</p>
                           <p className="truncate text-xs text-slate-500 dark:text-slate-400">
-                            {u.emp_code || "No code"} {u.department_name ? `| ${u.department_name}` : ""}
+                            {u.is_external ? "External" : u.emp_code || "No code"}
+                            {u.department_name ? ` | ${u.department_name}` : ""}
+                            {u.company ? ` | ${u.company}` : ""}
                             {u.email ? ` | ${u.email}` : ""}
                           </p>
                         </div>
