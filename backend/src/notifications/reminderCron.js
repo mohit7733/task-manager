@@ -1,5 +1,5 @@
 const cron = require("node-cron");
-const { addHours, isAfter, isBefore, startOfDay } = require("date-fns");
+const { addHours, isAfter, isBefore, isSameDay, startOfDay } = require("date-fns");
 const Meeting = require("../meetings/meeting.model");
 const Task = require("../tasks/task.model");
 const User = require("../auth/user.model");
@@ -160,59 +160,67 @@ async function dispatchReminder({ meeting, task, type, title, message, reminderK
   }
 }
 
-async function processMeetingReminders(now, leadHours) {
+function isReminderDateToday(reminderDate, now) {
+  if (!reminderDate) return false;
+  return isSameDay(new Date(reminderDate), now);
+}
+
+function isWithinOneHourBefore(meetingAt, now) {
+  const oneHourBefore = addHours(meetingAt, -1);
+  return !isBefore(now, oneHourBefore) && isBefore(now, meetingAt);
+}
+
+async function processMeetingReminders(now) {
   const meetings = await Meeting.find({
     status: { $ne: "Completed" },
-    $or: [
-      { meeting_date: { $exists: true, $ne: null } },
-      { reminder_date: { $exists: true, $ne: null } }
-    ]
+    meeting_date: { $exists: true, $ne: null }
   }).populate("created_by", "_id email email_notifications_enabled");
 
   for (const meeting of meetings) {
+    const meetingAt = combineDateAndTime(meeting.meeting_date, meeting.meeting_time);
+    if (!meetingAt) continue;
+
     const responsible = responsiblePersonLabel(meeting.responsible_person) || "team";
-    const anchors = [
-      {
-        kind: "reminder_date",
-        label: "Reminder",
-        target: combineDateAndTime(meeting.reminder_date, null),
-        allDay: true,
-        whenText: formatDateTime(meeting.reminder_date)
-      },
-      {
-        kind: "meeting_date",
-        label: "Meeting",
-        target: combineDateAndTime(meeting.meeting_date, meeting.meeting_time),
-        allDay: !meeting.meeting_time,
-        whenText: formatDateTime(meeting.meeting_date, meeting.meeting_time)
-      }
-    ];
+    const whenText = formatDateTime(meeting.meeting_date, meeting.meeting_time);
+    const extraEmails = meetingResponsibleEmails(meeting);
+    const base = {
+      meeting,
+      creator: meeting.created_by,
+      extraEmails
+    };
 
-    for (const anchor of anchors) {
-      if (!anchor.target) continue;
-      const reminderType = classifyReminder(anchor.target, now, leadHours, { allDay: anchor.allDay });
-      if (!reminderType) continue;
-
-      const title =
-        reminderType === "overdue"
-          ? `Overdue ${anchor.label}: ${meeting.title}`
-          : `Upcoming ${anchor.label}: ${meeting.title}`;
-
-      const message =
-        reminderType === "overdue"
-          ? `${meeting.status} meeting for ${responsible} was scheduled for ${anchor.whenText}.`
-          : `${meeting.status} meeting for ${responsible} is scheduled for ${anchor.whenText}.`;
-
-      const reminderKey = `meeting:${meeting._id}:${anchor.kind}:${reminderType}`;
-
+    // Due / overdue meeting — at most one email per recipient per day
+    if (isBefore(meetingAt, now)) {
       await dispatchReminder({
-        meeting,
-        type: reminderType,
-        title,
-        message,
-        reminderKey,
-        creator: meeting.created_by,
-        extraEmails: meetingResponsibleEmails(meeting)
+        ...base,
+        type: "overdue",
+        title: `Due Meeting: ${meeting.title}`,
+        message: `${meeting.status} meeting for ${responsible} was scheduled for ${whenText} and is now due.`,
+        reminderKey: `meeting:${meeting._id}:due`
+      });
+      continue;
+    }
+
+    // Upcoming — reminder date reached (at most one email per recipient per day)
+    if (meeting.reminder_date && isReminderDateToday(meeting.reminder_date, now)) {
+      const reminderWhen = formatDateTime(meeting.reminder_date);
+      await dispatchReminder({
+        ...base,
+        type: "upcoming",
+        title: `Meeting Reminder: ${meeting.title}`,
+        message: `Reminder for ${responsible}: ${meeting.status} meeting is scheduled for ${whenText} (reminder date ${reminderWhen}).`,
+        reminderKey: `meeting:${meeting._id}:reminder_date`
+      });
+    }
+
+    // Upcoming — within 1 hour before meeting (at most one email per recipient per day)
+    if (isWithinOneHourBefore(meetingAt, now)) {
+      await dispatchReminder({
+        ...base,
+        type: "upcoming",
+        title: `Meeting in 1 Hour: ${meeting.title}`,
+        message: `${meeting.status} meeting for ${responsible} starts in about 1 hour (${whenText}).`,
+        reminderKey: `meeting:${meeting._id}:one_hour`
       });
     }
   }
@@ -260,7 +268,7 @@ async function createReminderNotifications() {
     const now = new Date();
     const users = await User.find({ email_notifications_enabled: { $ne: false } }).select("reminder_lead_hours");
     const leadHours = getLeadHours(users);
-    await processMeetingReminders(now, leadHours);
+    await processMeetingReminders(now);
     await processTaskReminders(now, leadHours);
   } catch (error) {
     console.error("[Reminder] Cron failed:", error);

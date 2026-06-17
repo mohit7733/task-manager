@@ -656,7 +656,7 @@ export function SettingsPage() {
           </div>
         </div> */}
 
-        
+
 
         <div className="space-y-6">
           <div className={`${brand.card} p-6`}>
@@ -684,28 +684,39 @@ export function SettingsPage() {
                   <Mail className="mr-1 inline h-4 w-4" />
                   Email Notifications
                 </FieldLabel>
-                <div className="flex items-center justify-between rounded-xl border border-slate-100 px-3 py-2 dark:border-slate-700">
-                  <span className="text-sm text-slate-600 dark:text-slate-400">Reminders, assignments & MOM updates</span>
-                  <button
-                    type="button"
-                    disabled={savingSettings}
-                    onClick={() => {
-                      const next = !emailEnabled;
-                      setEmailEnabled(next);
-                      saveEmailSettings(next, reminderHours);
-                    }}
-                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                      emailEnabled ? "bg-indigo-600" : "bg-slate-300 dark:bg-slate-600"
-                    }`}
-                  >
-                    <span
-                      className={`inline-block h-4 w-4 rounded-full bg-white transition-transform ${
-                        emailEnabled ? "translate-x-6" : "translate-x-1"
+                <div className="rounded-xl border border-slate-100 bg-slate-50/60 px-4 py-3 dark:border-slate-700 dark:bg-slate-800/40">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-medium text-slate-700 dark:text-slate-200">Email notifications</p>
+                      <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                        Assignments, MOM updates, and deadline reminders
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={savingSettings}
+                      aria-pressed={emailEnabled}
+                      aria-label={emailEnabled ? "Disable email notifications" : "Enable email notifications"}
+                      onClick={() => {
+                        const next = !emailEnabled;
+                        setEmailEnabled(next);
+                        saveEmailSettings(next, reminderHours);
+                      }}
+                      className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
+                        emailEnabled ? "bg-indigo-600" : "bg-slate-300 dark:bg-slate-600"
                       }`}
-                    />
-                  </button>
+                    >
+                      <span
+                        className={`inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
+                          emailEnabled ? "translate-x-6" : "translate-x-1"
+                        }`}
+                      />
+                    </button>
+                  </div>
                 </div>
-                <p className="mt-1 text-xs text-slate-400">Configure SMTP in backend .env to send real emails</p>
+                <p className="mt-2 text-xs text-slate-400">
+                  Emails use branded templates with secure guest links. SMTP must be configured on the server.
+                </p>
               </div>
               <div>
                 <FieldLabel>Reminder lead time</FieldLabel>

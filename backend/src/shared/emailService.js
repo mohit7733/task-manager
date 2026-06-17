@@ -1,7 +1,7 @@
 const path = require("path");
 const fs = require("fs");
 const nodemailer = require("nodemailer");
-const { ensureShareLink, shareUrl } = require("../share/share.service");
+const { ensureShareLink, shareUrl, appUrl } = require("../share/share.service");
 
 let transporter = null;
 
@@ -20,22 +20,25 @@ function getTransporter() {
   return transporter;
 }
 
-function appUrl() {
-  return process.env.APP_URL || "http://localhost:5173";
-}
-
 function fmtDate(d) {
   if (!d) return "—";
   return new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
 }
 
 function fmtTime(t) {
-  // Expects string in "HH:mm" or "H:mm" or Date
   if (!t) return "";
-  if (typeof t === "string" && /^([01]?\d|2[0-3]):[0-5]?\d$/.test(t)) return t;
+  if (typeof t === "string" && /^([01]?\d|2[0-3]):[0-5]?\d$/.test(t)) {
+    const [h, m] = t.split(":");
+    try {
+      const d = new Date(`1970-01-01T${h.padStart(2, "0")}:${(m || "0").padStart(2, "0")}:00`);
+      return d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
+    } catch {
+      return t;
+    }
+  }
   try {
     const d = new Date(`1970-01-01T${t}`);
-    return d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
+    return d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
   } catch {
     return t;
   }
@@ -69,6 +72,7 @@ function fileAttachment(storedPath) {
 }
 
 const APP_NAME = "ExecuFlow";
+const APP_TAGLINE = "Executive Meeting & Task Intelligence";
 
 function escapeHtml(str) {
   if (str == null || str === "") return "";
@@ -110,6 +114,15 @@ function statusBadge(text, variant = "default") {
   };
   const c = colors[variant] || colors.default;
   return `<span style="display:inline-block;padding:4px 12px;border-radius:999px;background:${c.bg};color:${c.color};border:1px solid ${c.border};font-size:12px;font-weight:600;line-height:1.4;white-space:nowrap">${escapeHtml(text)}</span>`;
+}
+
+function standardFooterHtml({ guest = false } = {}) {
+  const url = escapeHtml(appUrl());
+  const app = escapeHtml(APP_NAME);
+  if (guest) {
+    return `This email includes a secure read-only guest link. For full access, sign in at <a href="${url}" style="color:#4f46e5;font-weight:600">${app}</a>.`;
+  }
+  return `Need assistance? Contact your administrator or open <a href="${url}" style="color:#4f46e5;font-weight:600">${app}</a>.`;
 }
 
 function emailStyles() {
@@ -171,7 +184,7 @@ function emailButton(label, href) {
   return `
     <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:24px auto 8px">
       <tr>
-        <td align="center" style="border-radius:10px;background:linear-gradient(135deg,#2563eb,#4f46e5)">
+        <td align="center" style="border-radius:10px;background:linear-gradient(135deg,#2563eb,#4f46e5);box-shadow:0 4px 14px rgba(79,70,229,0.35)">
           <a href="${escapeHtml(href)}" class="cta-button" style="display:inline-block;padding:13px 28px;font-size:15px;font-weight:600;color:#ffffff;border-radius:10px;line-height:1.2">
             ${escapeHtml(label)}
           </a>
@@ -211,7 +224,7 @@ function emailBaseTemplate({ title, preheader, body, ctaLabel, ctaLink, customFo
                 <tr>
                   <td align="center" style="padding-top:14px">
                     <h1 class="email-title" style="margin:0;font-size:26px;line-height:1.2;font-weight:700;color:#ffffff;font-family:'Segoe UI',Roboto,Arial,sans-serif">${escapeHtml(title)}</h1>
-                    <p style="margin:8px 0 0;font-size:13px;color:#dbeafe;font-family:'Segoe UI',Roboto,Arial,sans-serif">${APP_NAME}</p>
+                    <p style="margin:8px 0 0;font-size:13px;color:#dbeafe;font-family:'Segoe UI',Roboto,Arial,sans-serif">${APP_NAME} · ${APP_TAGLINE}</p>
                   </td>
                 </tr>
               </table>
@@ -227,13 +240,13 @@ function emailBaseTemplate({ title, preheader, body, ctaLabel, ctaLink, customFo
             <td class="email-footer" style="padding:8px 32px 28px;text-align:center;font-family:'Segoe UI',Roboto,Arial,sans-serif">
               <div style="height:1px;background:#e2e8f0;margin:0 0 18px"></div>
               <p style="margin:0;font-size:13px;color:#64748b;line-height:1.6">
-                ${customFooter || "For support, contact your administrator."}
+                ${customFooter || standardFooterHtml()}
               </p>
             </td>
           </tr>
         </table>
         <p style="margin:16px 0 0;font-size:12px;color:#94a3b8;font-family:'Segoe UI',Roboto,Arial,sans-serif">
-          &copy; ${new Date().getFullYear()} ${APP_NAME}
+          &copy; ${new Date().getFullYear()} ${APP_NAME}. All rights reserved.
         </p>
       </td>
     </tr>
@@ -263,12 +276,14 @@ function detailsCard(rowsHtml) {
   `;
 }
 
-function detailRow(label, value) {
-  const displayValue = value != null && value !== "" ? value : "—";
+function detailRow(label, value, { html = false } = {}) {
+  const isEmpty = value == null || value === "";
+  const displayValue = isEmpty ? "—" : value;
+  const safeValue = html ? displayValue : escapeHtml(String(displayValue));
   return `
     <tr class="detail-row">
       <td class="detail-label" valign="top" style="padding:10px 16px 10px 0;color:#64748b;font-size:12px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;width:34%;font-family:'Segoe UI',Roboto,Arial,sans-serif">${escapeHtml(label)}</td>
-      <td class="detail-value" valign="top" style="padding:10px 0;color:#0f172a;font-size:15px;line-height:1.6;font-family:'Segoe UI',Roboto,Arial,sans-serif">${displayValue}</td>
+      <td class="detail-value" valign="top" style="padding:10px 0;color:#0f172a;font-size:15px;line-height:1.6;font-family:'Segoe UI',Roboto,Arial,sans-serif">${safeValue}</td>
     </tr>
   `;
 }
@@ -282,7 +297,7 @@ function linkValue(url, label) {
 function alertCard(message, type = "info") {
   const styles = {
     overdue: { bg: "#fef2f2", border: "#fecaca", accent: "#dc2626", icon: "!" },
-    upcoming: { bg: "#eff6ff", border: "#bfdbfe", accent: "#2563eb", icon: "i" },
+    upcoming: { bg: "#eff6ff", border: "#bfdbfe", accent: "#2563eb", icon: "⏱" },
     info: { bg: "#f8fafc", border: "#e2e8f0", accent: "#475569", icon: "i" }
   };
   const s = styles[type] || styles.info;
@@ -306,23 +321,54 @@ function alertCard(message, type = "info") {
   `;
 }
 
+function meetingDetailRows(meeting, { assigneeName } = {}) {
+  return `
+    ${detailRow("Title", meeting.title)}
+    ${detailRow("Date", fmtDate(meeting.meeting_date))}
+    ${detailRow("Time", meeting.meeting_time ? fmtTime(meeting.meeting_time) : "—")}
+    ${assigneeName ? detailRow("Responsible Person", assigneeName) : ""}
+    ${detailRow("Status", statusBadge(meeting.status, statusVariant(meeting.status)), { html: true })}
+    ${detailRow("Priority", statusBadge(meeting.priority || "Medium", priorityVariant(meeting.priority)), { html: true })}
+    ${meeting.location ? detailRow("Location", meeting.location) : ""}
+    ${meeting.meeting_link ? detailRow("Meeting Link", linkValue(meeting.meeting_link, "Open meeting link"), { html: true }) : ""}
+  `;
+}
+
+function taskDetailRows(task, { assigneeName } = {}) {
+  return `
+    ${detailRow("Task", task.title)}
+    ${detailRow("Department", task.department || "—")}
+    ${assigneeName ? detailRow("Assigned To", assigneeName) : ""}
+    ${detailRow("Status", statusBadge(task.status, statusVariant(task.status)), { html: true })}
+    ${detailRow("Priority", statusBadge(task.priority || "Medium", priorityVariant(task.priority)), { html: true })}
+    ${detailRow("Next Review", task.next_review_date ? fmtDate(task.next_review_date) : "—")}
+    ${task.deadline ? detailRow("Deadline", fmtDate(task.deadline)) : ""}
+  `;
+}
+
+function buildPlainText({ greeting, message, rows = [], ctaLabel, ctaLink }) {
+  const lines = [];
+  if (greeting) lines.push(greeting);
+  if (message) lines.push(message, "");
+  for (const [label, value] of rows) {
+    lines.push(`${label}: ${value ?? "—"}`);
+  }
+  if (ctaLabel && ctaLink) lines.push("", `${ctaLabel}: ${ctaLink}`);
+  lines.push("", `— ${APP_NAME}`);
+  return lines.join("\n");
+}
+
 async function sendMeetingAssignedEmail(meeting, data, creator) {
   const to = data.email;
   const name = data.name;
   if (!to || !name) return;
   const shareToken = await ensureShareLink("meeting", meeting._id, meeting.coo_id);
   const subject = `Meeting Assigned: ${meeting.title}`;
+  const ctaLink = shareUrl(shareToken);
   const detailsTable = detailsCard(`
-    ${detailRow("Title", escapeHtml(meeting.title))}
-    ${detailRow("Scheduled By", escapeHtml(creator?.name || "PA"))}
-    ${detailRow("Date", escapeHtml(fmtDate(meeting.meeting_date)))}
-    ${detailRow("Time", escapeHtml(meeting.meeting_time ? fmtTime(meeting.meeting_time) : "—"))}
-    ${detailRow("Responsible Person", escapeHtml(name))}
-    ${detailRow("Status", statusBadge(meeting.status, statusVariant(meeting.status)))}
-    ${detailRow("Priority", statusBadge(meeting.priority || "Medium", priorityVariant(meeting.priority)))}
-    ${detailRow("Location", escapeHtml(meeting.location || "—"))}
-    ${detailRow("Description", escapeHtml(meeting.description || "—"))}
-    ${detailRow("Meeting Link", meeting.meeting_link ? linkValue(meeting.meeting_link, "Open meeting link") : "—")}
+    ${detailRow("Scheduled By", creator?.name || "PA")}
+    ${meetingDetailRows(meeting, { assigneeName: name })}
+    ${meeting.description ? detailRow("Description", meeting.description) : ""}
   `);
   const body = `
     ${introBlock(`Hi ${name},`, "You have been assigned the following meeting. Please review the details below.")}
@@ -333,11 +379,24 @@ async function sendMeetingAssignedEmail(meeting, data, creator) {
     preheader: `Meeting assigned: ${meeting.title}`,
     body,
     ctaLabel: "View Meeting Details",
-    ctaLink: shareUrl(shareToken),
-    // customFooter: `Need help? Contact your administrator or <a href="${appUrl()}" style="color:#4f46e5">open ${APP_NAME}</a>.`
+    ctaLink,
+    customFooter: standardFooterHtml({ guest: true })
+  });
+  const text = buildPlainText({
+    greeting: `Hi ${name},`,
+    message: "You have been assigned the following meeting.",
+    rows: [
+      ["Title", meeting.title],
+      ["Date", fmtDate(meeting.meeting_date)],
+      ["Time", meeting.meeting_time ? fmtTime(meeting.meeting_time) : "—"],
+      ["Status", meeting.status],
+      ["Priority", meeting.priority || "Medium"]
+    ],
+    ctaLabel: "View Meeting Details",
+    ctaLink
   });
 
-  return sendEmail({ to, subject, html, text: subject });
+  return sendEmail({ to, subject, html, text });
 }
 
 async function sendTaskAssignedEmail(task, data, creator) {
@@ -346,16 +405,11 @@ async function sendTaskAssignedEmail(task, data, creator) {
   if (!to || !name) return;
   const shareToken = await ensureShareLink("task", task._id, task.coo_id);
   const subject = `Task Assigned: ${task.title}`;
+  const ctaLink = shareUrl(shareToken);
   const detailsTable = detailsCard(`
-    ${detailRow("Task", escapeHtml(task.title))}
-    ${detailRow("Assigned By", escapeHtml(creator?.name || "PA"))}
-    ${detailRow("Department", escapeHtml(task.department || "—"))}
-    ${detailRow("Assigned To", escapeHtml(name))}
-    ${detailRow("Status", statusBadge(task.status, statusVariant(task.status)))}
-    ${detailRow("Priority", statusBadge(task.priority || "Medium", priorityVariant(task.priority)))}
-    ${detailRow("Next Review", escapeHtml(task.next_review_date ? fmtDate(task.next_review_date) : "—"))}
-    ${detailRow("Deadline", escapeHtml(task.deadline ? fmtDate(task.deadline) : "—"))}
-    ${detailRow("Description", escapeHtml(task.description || "—"))}
+    ${detailRow("Assigned By", creator?.name || "PA")}
+    ${taskDetailRows(task, { assigneeName: name })}
+    ${task.description ? detailRow("Description", task.description) : ""}
   `);
   const body = `
     ${introBlock(`Hi ${name},`, "You have been assigned a new department task. Please review the details below.")}
@@ -366,11 +420,23 @@ async function sendTaskAssignedEmail(task, data, creator) {
     preheader: `Task assigned: ${task.title}`,
     body,
     ctaLabel: "View Task Details",
-    ctaLink: shareUrl(shareToken),
-    // customFooter: `Need help? Contact your administrator or <a href="${appUrl()}" style="color:#4f46e5">open ${APP_NAME}</a>.`
+    ctaLink,
+    customFooter: standardFooterHtml({ guest: true })
+  });
+  const text = buildPlainText({
+    greeting: `Hi ${name},`,
+    message: "You have been assigned a new department task.",
+    rows: [
+      ["Task", task.title],
+      ["Department", task.department],
+      ["Status", task.status],
+      ["Next Review", task.next_review_date ? fmtDate(task.next_review_date) : "—"]
+    ],
+    ctaLabel: "View Task Details",
+    ctaLink
   });
 
-  return sendEmail({ to, subject, html, text: subject });
+  return sendEmail({ to, subject, html, text });
 }
 
 function meetingResponsibleEmails(meeting) {
@@ -386,18 +452,19 @@ async function sendMeetingRemarkEmail(meeting, remark, creator) {
   const shareToken = await ensureShareLink("meeting", meeting._id, meeting.coo_id);
   const subject = `MOM Update: ${meeting.title} — Remark #${remark.remark_number}`;
   const attach = fileAttachment(remark.attachment);
+  const ctaLink = shareUrl(shareToken);
 
   const detailsTable = detailsCard(`
-    ${detailRow("Meeting", escapeHtml(meeting.title))}
-    ${detailRow("Remark #", escapeHtml(String(remark.remark_number)))}
-    ${detailRow("By", escapeHtml(creator?.name || "PA"))}
-    ${detailRow("Date", escapeHtml(remark.remark_date ? fmtDate(remark.remark_date) : "—"))}
-    ${detailRow("Description", escapeHtml(remark.remark_description || "—"))}
-    ${remark.next_meeting_date ? detailRow("Next Meeting", escapeHtml(fmtDate(remark.next_meeting_date))) : ""}
-    ${remark.next_meeting_time ? detailRow("Next Meeting Time", escapeHtml(fmtTime(remark.next_meeting_time))) : ""}
-    ${remark.next_agenda ? detailRow("Next Agenda", escapeHtml(remark.next_agenda)) : ""}
-    ${remark.next_followup_note ? detailRow("Next Followup Note", escapeHtml(remark.next_followup_note)) : ""}
-    ${attach ? detailRow("Attachment", '<span style="color:#4f46e5;font-weight:600">Included with this email</span>') : ""}
+    ${detailRow("Meeting", meeting.title)}
+    ${detailRow("Remark #", String(remark.remark_number))}
+    ${detailRow("By", creator?.name || "PA")}
+    ${detailRow("Date", remark.remark_date ? fmtDate(remark.remark_date) : "—")}
+    ${detailRow("Description", remark.remark_description || "—")}
+    ${remark.next_meeting_date ? detailRow("Next Meeting", fmtDate(remark.next_meeting_date)) : ""}
+    ${remark.next_meeting_time ? detailRow("Next Meeting Time", fmtTime(remark.next_meeting_time)) : ""}
+    ${remark.next_agenda ? detailRow("Next Agenda", remark.next_agenda) : ""}
+    ${remark.next_followup_note ? detailRow("Next Followup Note", remark.next_followup_note) : ""}
+    ${attach ? detailRow("Attachment", "Included with this email") : ""}
   `);
   const body = `
     ${introBlock("Hello,", "A new remark has been added to your meeting. Review the update below.")}
@@ -410,15 +477,24 @@ async function sendMeetingRemarkEmail(meeting, remark, creator) {
     preheader: `New remark added for ${meeting.title}`,
     body,
     ctaLabel: "View Meeting Details",
-    ctaLink: shareUrl(shareToken),
-    // customFooter: `For support, contact your administrator or <a href="${appUrl()}" style="color:#4f46e5">open ${APP_NAME}</a>.`
+    ctaLink,
+    customFooter: standardFooterHtml({ guest: true })
   });
 
   return sendEmail({
     to: recipients.join(","),
     subject,
     html,
-    text: subject,
+    text: buildPlainText({
+      greeting: "Hello,",
+      message: `New remark #${remark.remark_number} added for meeting: ${meeting.title}`,
+      rows: [
+        ["Description", remark.remark_description],
+        ["By", creator?.name || "PA"]
+      ],
+      ctaLabel: "View Meeting Details",
+      ctaLink
+    }),
     attachments: attach ? [attach] : undefined
   });
 }
@@ -431,20 +507,21 @@ async function sendTaskRemarkEmail(task, remark, creator) {
   const shareToken = await ensureShareLink("task", task._id, task.coo_id);
   const subject = `Task Remark: ${task.title} — #${remark.remark_number}`;
   const attach = fileAttachment(remark.attachment);
+  const ctaLink = shareUrl(shareToken);
 
   const detailsTable = detailsCard(`
-    ${detailRow("Task", escapeHtml(task.title))}
-    ${detailRow("Department", escapeHtml(task.department || "—"))}
-    ${detailRow("Remark #", escapeHtml(String(remark.remark_number)))}
-    ${detailRow("By", escapeHtml(creator?.name || "PA"))}
-    ${detailRow("Date", escapeHtml(remark.remark_date ? fmtDate(remark.remark_date) : "—"))}
-    ${detailRow("Description", escapeHtml(remark.remark_description || "—"))}
-    ${remark.pending_reason ? detailRow("Pending Reason", escapeHtml(remark.pending_reason)) : ""}
-    ${remark.completion_note ? detailRow("Completed Note", escapeHtml(remark.completion_note)) : ""}
-    ${remark.next_review_date ? detailRow("Next Review", escapeHtml(fmtDate(remark.next_review_date))) : ""}
-    ${remark.next_agenda ? detailRow("Next Agenda", escapeHtml(remark.next_agenda)) : ""}
-    ${remark.next_followup_note ? detailRow("Next Followup Note", escapeHtml(remark.next_followup_note)) : ""}
-    ${attach ? detailRow("Attachment", '<span style="color:#4f46e5;font-weight:600">Included with this email</span>') : ""}
+    ${detailRow("Task", task.title)}
+    ${detailRow("Department", task.department || "—")}
+    ${detailRow("Remark #", String(remark.remark_number))}
+    ${detailRow("By", creator?.name || "PA")}
+    ${detailRow("Date", remark.remark_date ? fmtDate(remark.remark_date) : "—")}
+    ${detailRow("Description", remark.remark_description || "—")}
+    ${remark.pending_reason ? detailRow("Pending Reason", remark.pending_reason) : ""}
+    ${remark.completion_note ? detailRow("Completed Note", remark.completion_note) : ""}
+    ${remark.next_review_date ? detailRow("Next Review", fmtDate(remark.next_review_date)) : ""}
+    ${remark.next_agenda ? detailRow("Next Agenda", remark.next_agenda) : ""}
+    ${remark.next_followup_note ? detailRow("Next Followup Note", remark.next_followup_note) : ""}
+    ${attach ? detailRow("Attachment", "Included with this email") : ""}
   `);
   const body = `
     ${introBlock("Hello,", "A new remark has been added to your department task. Review the update below.")}
@@ -457,22 +534,61 @@ async function sendTaskRemarkEmail(task, remark, creator) {
     preheader: `New remark added for ${task.title}`,
     body,
     ctaLabel: "View Task Details",
-    ctaLink: shareUrl(shareToken),
-    // customFooter: `For support, contact your administrator or <a href="${appUrl()}" style="color:#4f46e5">open ${APP_NAME}</a>.`
+    ctaLink,
+    customFooter: standardFooterHtml({ guest: true })
   });
 
   return sendEmail({
     to: recipients.join(","),
     subject,
     html,
-    text: subject,
+    text: buildPlainText({
+      greeting: "Hello,",
+      message: `New remark #${remark.remark_number} added for task: ${task.title}`,
+      rows: [
+        ["Description", remark.remark_description],
+        ["By", creator?.name || "PA"]
+      ],
+      ctaLabel: "View Task Details",
+      ctaLink
+    }),
     attachments: attach ? [attach] : undefined
   });
 }
 
 async function sendReminderEmail({ to, title, message, type, meeting, task }) {
   const alertType = type === "overdue" ? "overdue" : "upcoming";
-  const body = alertCard(message, alertType);
+  const introMessage =
+    type === "overdue"
+      ? "The following item requires your attention. Please review and take action."
+      : "This is a reminder about an upcoming item on your schedule.";
+
+  let detailsHtml = "";
+  const plainRows = [];
+  if (meeting) {
+    detailsHtml = detailsCard(meetingDetailRows(meeting));
+    plainRows.push(
+      ["Meeting", meeting.title],
+      ["Date", fmtDate(meeting.meeting_date)],
+      ["Time", meeting.meeting_time ? fmtTime(meeting.meeting_time) : "—"],
+      ["Status", meeting.status]
+    );
+  } else if (task) {
+    detailsHtml = detailsCard(taskDetailRows(task));
+    plainRows.push(
+      ["Task", task.title],
+      ["Department", task.department],
+      ["Next Review", task.next_review_date ? fmtDate(task.next_review_date) : "—"],
+      ["Status", task.status]
+    );
+  }
+
+  const body = `
+    ${introBlock("Hello,", introMessage)}
+    ${alertCard(message, alertType)}
+    ${detailsHtml ? `<div style="margin-top:20px">${detailsHtml}</div>` : ""}
+  `;
+
   let ctaLabel = `Open ${APP_NAME}`;
   let ctaLink = appUrl();
   if (meeting?._id && meeting?.coo_id) {
@@ -484,15 +600,28 @@ async function sendReminderEmail({ to, title, message, type, meeting, task }) {
     ctaLabel = "View Task Details";
     ctaLink = shareUrl(shareToken);
   }
+
   const html = emailBaseTemplate({
     title,
     preheader: message,
     body,
     ctaLabel,
     ctaLink,
-    // customFooter: `This is a read-only guest link. <a href="${appUrl()}" style="color:#4f46e5">Open ${APP_NAME}</a> to sign in.`
+    customFooter: standardFooterHtml({ guest: Boolean(meeting || task) })
   });
-  return sendEmail({ to, subject: title, html, text: `${title}\n${message}\n${ctaLink}` });
+
+  return sendEmail({
+    to,
+    subject: title,
+    html,
+    text: buildPlainText({
+      greeting: "Hello,",
+      message: `${message}${type === "overdue" ? " (Action required)" : ""}`,
+      rows: plainRows,
+      ctaLabel,
+      ctaLink
+    })
+  });
 }
 
 module.exports = {

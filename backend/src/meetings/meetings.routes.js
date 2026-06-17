@@ -2,7 +2,6 @@ const router = require("express").Router();
 const {
   listMeetings,
   createMeeting,
-  sendMeetingAssignedEmailtesting,
   updateMeeting,
   getMeetingTimeline,
   getCalendarEvents,
@@ -13,7 +12,6 @@ const upload = require("../shared/upload");
 
 router.use(protect);
 router.get("/", listMeetings);
-router.get("/EmailTesting", sendMeetingAssignedEmailtesting);
 router.get("/calendar-events", getCalendarEvents);
 router.post("/", upload.single("attachment"), createMeeting);
 router.put("/:id", upload.single("attachment"), updateMeeting);

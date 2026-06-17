@@ -1,7 +1,7 @@
 const { addDays, isBefore, startOfDay } = require("date-fns");
 const Meeting = require("./meeting.model");
 const Remark = require("../remarks/remark.model");
-const { sendMeetingAssignedEmail, sendEmail } = require("../shared/emailService");
+const { sendMeetingAssignedEmail } = require("../shared/emailService");
 
 function parseResponsiblePerson(value) {
   if (!value) return [];
@@ -144,19 +144,6 @@ async function createMeeting(req, res) {
     await sendMeetingAssignedEmail(meeting, { email: u.email, name: u.name }, req.user).catch(() => { });
   }));
   res.status(201).json(meeting);
-}
-
-async function sendMeetingAssignedEmailtesting() {
-  await sendEmail({
-    to: "mohitbeniwal@aimantra.co",
-    subject: "New Meeting Assigned",
-    html: `<p>Hello ,</p>
-    <p>You have been assigned a new meeting:</p>
-    <p>Title: </p>
-    <p>Date: </p>
-    <p>Time: </p>
-  `
-  });
 }
 
 function sameCalendarSlot(a, b, timeA, timeB) {
@@ -320,7 +307,6 @@ async function removeMeeting(req, res) {
 module.exports = {
   listMeetings,
   createMeeting,
-  sendMeetingAssignedEmailtesting,
   updateMeeting,
   getMeetingTimeline,
   getCalendarEvents,
