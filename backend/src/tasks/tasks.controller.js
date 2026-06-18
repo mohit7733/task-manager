@@ -118,7 +118,7 @@ async function createTask(req, res) {
     coo_id: body.coo_id || req.user.coo_id,
     task_create_date: body.task_create_date || new Date()
   });
-  await Promise.all(body.assigned_to.map(async (u) => {
+  Promise.all(body.assigned_to.map(async (u) => {
     await sendTaskAssignedEmail(task, { email: u.email, name: u.name }, req.user).catch(() => { });
   }));
   res.status(201).json(task);
@@ -134,7 +134,7 @@ async function updateTask(req, res) {
   );
   if (!task) return res.status(404).json({ message: "Task not found" });
   if (update.assigned_to?.length) {
-    await Promise.all(update.assigned_to.map(async (u) => {
+    Promise.all(update.assigned_to.map(async (u) => {
       await sendTaskAssignedEmail(task, { email: u.email, name: u.name }, req.user).catch(() => { });
     }));
   }

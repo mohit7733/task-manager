@@ -646,7 +646,7 @@ export default function MeetingTable({ meetings, reload, highlightMeetingId, onE
                           <select
                             value={m.status}
                             onChange={(e) => updateStatus(m._id, e.target.value, e)}
-                            className={`w-full cursor-pointer rounded-lg border-0 px-2 py-1 text-xs font-semibold ring-1 ring-inset ${STATUS_STYLES[m.status] || "bg-gray-100"}`}
+                            className={`w-full cursor-pointer rounded-lg border-0 px-2 py-1 text-xs font-semibold min-w-[110px] ring-1 ring-inset ${STATUS_STYLES[m.status] || "bg-gray-100"}`}
                           >
                             <option>Pending</option>
                             <option>In Progress</option>

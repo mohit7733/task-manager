@@ -1,0 +1,1167 @@
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  ArrowLeft, Download, Printer, Package, Box, CheckCircle,
+  Clock, XCircle, Ban, Star, StarHalf, ShoppingBag, ChevronLeft,
+  ChevronRight, Eye, Edit2, TrendingUp, TrendingDown, Filter,
+  Search, X, Check, AlertTriangle, Truck, RotateCcw, Leaf,
+  Store, Tag, Calendar, Shield, Info, BarChart2, Copy, ExternalLink,
+  Activity, Zap, Award, Users, DollarSign, Hash, Globe, Phone,
+  RefreshCw, ChevronDown, ChevronUp, Layers, Image, FileText
+} from 'lucide-react';
+import BASE_URL from '../../../Base';
+import { useParams, useNavigate } from 'react-router-dom';
+
+/* ─── tiny helpers ─────────────────────────────────────────── */
+const fmt = (n) =>
+  new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(n);
+
+const fmtDate = (d, opts = {}) =>
+  d ? new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', ...opts }) : '—';
+
+const discount = (mrp, sp) =>
+  mrp && sp ? Math.round((1 - parseFloat(sp) / parseFloat(mrp)) * 100) : 0;
+
+const coverOf = (media = []) =>
+  (media.find(m => m.is_cover) || media[0])?.media_url || null;
+
+/* ─── mock data ─────────────────────────────────────────────── */
+const MOCK_ORDERS = [
+  { id: 'ORD-001', customer: 'Rahul Sharma', email: 'rahul@email.com', date: '2024-06-15', amount: 299, status: 'Delivered', variant: '500ml', qty: 2, payment: 'Card' },
+  { id: 'ORD-002', customer: 'Priya Singh', email: 'priya@email.com', date: '2024-06-14', amount: 598, status: 'Shipped', variant: '1L', qty: 1, payment: 'UPI' },
+  { id: 'ORD-003', customer: 'Amit Verma', email: 'amit@email.com', date: '2024-06-13', amount: 449, status: 'Processing', variant: '250ml', qty: 3, payment: 'COD' },
+  { id: 'ORD-004', customer: 'Divya Nair', email: 'divya@email.com', date: '2024-06-12', amount: 299, status: 'Delivered', variant: '500ml', qty: 1, payment: 'Card' },
+  { id: 'ORD-005', customer: 'Karan Mehta', email: 'karan@email.com', date: '2024-06-11', amount: 897, status: 'Cancelled', variant: '100ml', qty: 4, payment: 'UPI' },
+];
+
+const MOCK_REVIEWS = [
+  { id: 1, customer: 'Alice C.', rating: 5, comment: 'Excellent product! Works great for my skin.', date: '2024-06-14', variant: '500ml', helpful: 12 },
+  { id: 2, customer: 'Bob M.', rating: 4, comment: 'Good quality, but price could be better.', date: '2024-06-12', variant: '250ml', helpful: 8 },
+  { id: 3, customer: 'Carol W.', rating: 5, comment: 'Amazing results! My skin feels so fresh.', date: '2024-06-10', variant: '500ml', helpful: 15 },
+  { id: 4, customer: 'Dan T.', rating: 3, comment: 'Average product, nothing special.', date: '2024-06-08', variant: '1L', helpful: 3 },
+  { id: 5, customer: 'Emma D.', rating: 5, comment: "Best face wash I've ever used!", date: '2024-06-05', variant: '500ml', helpful: 20 },
+];
+
+/* ─── sub-components ────────────────────────────────────────── */
+function StatusChip({ status }) {
+  const map = {
+    approved:  { bg: '#ECFDF5', color: '#059669', icon: <CheckCircle size={11}/>, label: 'Approved' },
+    pending:   { bg: '#FFFBEB', color: '#D97706', icon: <Clock size={11}/>,        label: 'Pending'  },
+    rejected:  { bg: '#FEF2F2', color: '#DC2626', icon: <XCircle size={11}/>,     label: 'Rejected' },
+    suspended: { bg: '#F5F3FF', color: '#7C3AED', icon: <Ban size={11}/>,          label: 'Suspended'},
+  };
+  const s = map[status?.toLowerCase()] || map.pending;
+  return (
+    <span style={{ display:'inline-flex', alignItems:'center', gap:4, padding:'3px 10px',
+      borderRadius:100, fontSize:11, fontWeight:700, background:s.bg, color:s.color }}>
+      {s.icon} {s.label}
+    </span>
+  );
+}
+
+function Stars({ rating }) {
+  return (
+    <span style={{ display:'inline-flex', gap:2 }}>
+      {[1,2,3,4,5].map(i => {
+        const Icon = i <= Math.floor(rating) ? Star : i === Math.ceil(rating) && rating % 1 >= 0.5 ? StarHalf : Star;
+        return <Icon key={i} size={13} fill={i <= rating ? '#F59E0B' : 'none'} color={i <= rating ? '#F59E0B' : '#D1D5DB'} />;
+      })}
+    </span>
+  );
+}
+
+function InfoRow({ label, value, mono }) {
+  return (
+    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center',
+      padding:'7px 0', borderBottom:'1px solid #F1F5F9' }}>
+      <span style={{ fontSize:12, color:'#94A3B8', fontWeight:500 }}>{label}</span>
+      <span style={{ fontSize:13, fontWeight:600, color: mono ? '#6366F1' : '#1E293B',
+        fontFamily: mono ? 'monospace' : 'inherit', background: mono ? '#EEF2FF' : 'none',
+        padding: mono ? '1px 6px' : 0, borderRadius:4 }}>
+        {value ?? '—'}
+      </span>
+    </div>
+  );
+}
+
+function Tag2({ children, color = '#0D614E', bg = '#E8F5F1' }) {
+  return (
+    <span style={{ display:'inline-flex', alignItems:'center', gap:4, padding:'3px 10px',
+      borderRadius:100, fontSize:11, fontWeight:600, background:bg, color }}>
+      {children}
+    </span>
+  );
+}
+
+/* ─── order status ──────────────────────────────────────────── */
+function OrderStatus({ s }) {
+  const m = {
+    delivered:  { bg:'#ECFDF5', color:'#059669', label:'Delivered',  icon:<CheckCircle size={11}/> },
+    shipped:    { bg:'#EFF6FF', color:'#3B82F6', label:'Shipped',    icon:<Truck size={11}/> },
+    processing: { bg:'#FFFBEB', color:'#D97706', label:'Processing', icon:<RefreshCw size={11}/> },
+    cancelled:  { bg:'#FEF2F2', color:'#DC2626', label:'Cancelled',  icon:<XCircle size={11}/> },
+  };
+  const t = m[s?.toLowerCase()] || m.processing;
+  return (
+    <span style={{ display:'inline-flex', alignItems:'center', gap:4, padding:'3px 10px',
+      borderRadius:100, fontSize:11, fontWeight:700, background:t.bg, color:t.color }}>
+      {t.icon} {t.label}
+    </span>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   MAIN COMPONENT
+═══════════════════════════════════════════════════════════════ */
+export default function ProductDetail() {
+  const navigate = useNavigate();
+  const { productId } = useParams();
+
+  const [loading, setLoading]     = useState(true);
+  const [error, setError]         = useState(null);
+  const [product, setProduct]     = useState(null);
+  const [variants, setVariants]   = useState([]);
+  const [filtered, setFiltered]   = useState([]);
+  const [activeVariant, setActiveVariant] = useState(null);
+  const [imgIdx, setImgIdx]       = useState(0);
+  const [tab, setTab]             = useState('overview');
+  const [search, setSearch]       = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [sortField, setSortField] = useState('title');
+  const [sortDir, setSortDir]     = useState('asc');
+  const [selected, setSelected]   = useState([]);
+  const [modal, setModal]         = useState(null); // { variant, type }
+  const [reason, setReason]       = useState('');
+  const [showFilter, setShowFilter] = useState(false);
+  const [expandInfo, setExpandInfo] = useState(true);
+  const filterRef = useRef();
+
+  /* ── load ─────────────────────────────────────────────────── */
+  useEffect(() => {
+    (async () => {
+      try {
+        const token = sessionStorage.getItem('superadmin_token');
+        const res = await fetch(`${BASE_URL}/vendors/admin/product/?id=${productId}`, {
+          headers: { Authorization: `Bearer ${token}`, 'ngrok-skip-browser-warning': 'true' }
+        });
+        const data = await res.json();
+        if (data.success) {
+          setProduct(data.data.product);
+          setVariants(data.data.variants);
+          setFiltered(data.data.variants);
+          setActiveVariant(data.data.variants[0] || null);
+        } else setError(data.message);
+      } catch (e) { setError(e.message); }
+      finally { setLoading(false); }
+    })();
+  }, [productId]);
+
+  /* ── filter / sort ───────────────────────────────────────── */
+  useEffect(() => {
+    let list = [...variants];
+    if (search) list = list.filter(v =>
+      [v.title, v.variant_code, v.size].some(x => x?.toLowerCase().includes(search.toLowerCase())));
+    if (statusFilter !== 'all') list = list.filter(v => v.status?.toLowerCase() === statusFilter);
+    list.sort((a, b) => {
+      let av = a[sortField] ?? '', bv = b[sortField] ?? '';
+      if (['mrp','selling_price','stock'].includes(sortField)) { av = +av; bv = +bv; }
+      else { av = String(av).toLowerCase(); bv = String(bv).toLowerCase(); }
+      return sortDir === 'asc' ? (av > bv ? 1 : -1) : (av < bv ? 1 : -1);
+    });
+    setFiltered(list);
+  }, [variants, search, statusFilter, sortField, sortDir]);
+
+  /* ── image navigation ────────────────────────────────────── */
+  const media = activeVariant?.media ?? [];
+  const curImg = media[imgIdx]?.media_url || null;
+  const goImg = (d) => setImgIdx((imgIdx + d + media.length) % media.length);
+
+  /* ── variant action ──────────────────────────────────────── */
+  const doAction = async (variantId, action, reasonText = '') => {
+    try {
+      const token = sessionStorage.getItem('superadmin_token');
+      const res = await fetch(`${BASE_URL}/vendors/admin/product/variant-action/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, 'ngrok-skip-browser-warning': 'true' },
+        body: JSON.stringify({ variant_id: variantId, action, reason: reasonText })
+      });
+      const data = await res.json();
+      if (data.success) {
+        const newStatus = { approve:'approved', reject:'rejected', suspend:'suspended' }[action] || 'pending';
+        setVariants(prev => prev.map(v => v.id === variantId ? { ...v, status: newStatus, reason: reasonText } : v));
+        if (activeVariant?.id === variantId) setActiveVariant(p => ({ ...p, status: newStatus }));
+        setModal(null); setReason(''); setSelected([]);
+      }
+    } catch (e) { alert(e.message); }
+  };
+
+  /* ── stats ───────────────────────────────────────────────── */
+  const stats = {
+    total:     variants.length,
+    stock:     variants.reduce((s, v) => s + (v.stock || 0), 0),
+    approved:  variants.filter(v => v.status === 'approved').length,
+    pending:   variants.filter(v => v.status === 'pending').length,
+    rejected:  variants.filter(v => v.status === 'rejected').length,
+    suspended: variants.filter(v => v.status === 'suspended').length,
+    avgPrice:  variants.length ? variants.reduce((s, v) => s + +v.selling_price, 0) / variants.length : 0,
+  };
+
+  const avgRating = MOCK_REVIEWS.length ? MOCK_REVIEWS.reduce((s, r) => s + r.rating, 0) / MOCK_REVIEWS.length : 0;
+  const totalRevenue = MOCK_ORDERS.reduce((s, o) => s + o.amount, 0);
+
+  /* ─── loading / error ──────────────────────────────────── */
+  if (loading) return (
+    <div style={cs.center}>
+      <div style={cs.leafSpin}><Leaf size={28} color="#0D614E" /></div>
+      <p style={{ color:'#64748B', marginTop:16, fontWeight:500 }}>Loading product…</p>
+    </div>
+  );
+  if (error) return (
+    <div style={cs.center}>
+      <AlertTriangle size={48} color="#DC2626" />
+      <p style={{ color:'#DC2626', margin:'12px 0 20px' }}>{error}</p>
+      <button style={cs.btnPrimary} onClick={() => window.location.reload()}>Retry</button>
+    </div>
+  );
+  if (!product) return <div style={cs.center}><p>Product not found</p></div>;
+
+  /* ═══════════════════════════════════════════════════════════
+     RENDER
+  ═══════════════════════════════════════════════════════════ */
+  return (
+    <div style={cs.page}>
+
+      {/* ── HERO HEADER ──────────────────────────────────────── */}
+      <div style={cs.heroWrap}>
+        {/* Decorative top-left leaf watermark */}
+        <Leaf size={200} color="rgba(255,255,255,0.06)" style={{ position:'absolute', top:-40, left:-40, transform:'rotate(-30deg)' }} />
+
+        <div style={cs.heroInner}>
+          {/* Back + breadcrumb */}
+          <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:20 }}>
+            <button style={cs.backBtn} onClick={() => navigate(-1)}>
+              <ArrowLeft size={18} />
+            </button>
+            <span style={{ color:'rgba(255,255,255,0.5)', fontSize:13 }}>Products</span>
+            <span style={{ color:'rgba(255,255,255,0.3)' }}>/</span>
+            <span style={{ color:'#fff', fontSize:13, fontWeight:600 }}>{product.name}</span>
+          </div>
+
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', flexWrap:'wrap', gap:20 }}>
+            <div>
+              {/* Brand pill */}
+              <div style={{ display:'inline-flex', alignItems:'center', gap:6, padding:'4px 14px',
+                background:'rgba(255,255,255,0.15)', borderRadius:100, marginBottom:12 }}>
+                <Award size={12} color="#86EFAC" />
+                <span style={{ fontSize:12, fontWeight:600, color:'#86EFAC' }}>{product.brand_name}</span>
+              </div>
+              <h1 style={cs.heroTitle}>{product.name}</h1>
+              <div style={{ display:'flex', flexWrap:'wrap', gap:8, marginTop:12 }}>
+                <Tag2 bg="rgba(255,255,255,0.12)" color="#fff">
+                  <Store size={11} /> {product.vendor_business_name}
+                </Tag2>
+                <Tag2 bg="rgba(255,255,255,0.12)" color="#fff">
+                  <Package size={11} /> {variants.length} Variants
+                </Tag2>
+                <Tag2 bg="rgba(255,255,255,0.12)" color="#fff">
+                  <Calendar size={11} /> {fmtDate(product.created_at)}
+                </Tag2>
+                {product.is_featured && (
+                  <Tag2 bg="#FEF3C7" color="#D97706"><Star size={11} fill="#D97706" /> Featured</Tag2>
+                )}
+              </div>
+            </div>
+
+            <div style={{ display:'flex', gap:8, flexShrink:0 }}>
+              <button style={cs.heroBtnGhost} onClick={() => window.print()}>
+                <Printer size={15} /> Print
+              </button>
+              <button style={cs.heroBtn}>
+                <Edit2 size={15} /> Edit Product
+              </button>
+            </div>
+          </div>
+
+          {/* Hero stat strip */}
+          <div style={cs.heroStrip}>
+            {[
+              { label: 'Total Stock', value: stats.stock.toLocaleString(), icon: <Box size={15} color="#86EFAC" /> },
+              { label: 'Avg. Price', value: fmt(stats.avgPrice), icon: <DollarSign size={15} color="#FCD34D" /> },
+              { label: 'Revenue (Mock)', value: fmt(totalRevenue), icon: <TrendingUp size={15} color="#A5B4FC" /> },
+              { label: 'Avg. Rating', value: `${avgRating.toFixed(1)} ★`, icon: <Star size={15} color="#FCD34D" /> },
+            ].map(item => (
+              <div key={item.label} style={cs.heroStat}>
+                <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:4 }}>
+                  {item.icon}
+                  <span style={{ fontSize:11, color:'rgba(255,255,255,0.5)', fontWeight:600, textTransform:'uppercase', letterSpacing:0.5 }}>{item.label}</span>
+                </div>
+                <span style={{ fontSize:22, fontWeight:800, color:'#fff' }}>{item.value}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div style={cs.body}>
+
+        {/* ── STATUS PILLS ROW ─────────────────────────────── */}
+        <div style={cs.pillRow}>
+          {[
+            { label:'Approved',  count:stats.approved,  color:'#059669', bg:'#ECFDF5', icon:<CheckCircle size={13}/> },
+            { label:'Pending',   count:stats.pending,   color:'#D97706', bg:'#FFFBEB', icon:<Clock size={13}/> },
+            { label:'Rejected',  count:stats.rejected,  color:'#DC2626', bg:'#FEF2F2', icon:<XCircle size={13}/> },
+            { label:'Suspended', count:stats.suspended, color:'#7C3AED', bg:'#F5F3FF', icon:<Ban size={13}/> },
+          ].map(p => (
+            <div key={p.label} style={{ ...cs.pill, background:p.bg, color:p.color }}>
+              {p.icon}
+              <span style={{ fontWeight:800, fontSize:18 }}>{p.count}</span>
+              <span style={{ fontSize:12, fontWeight:600, opacity:0.8 }}>{p.label}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* ── TWO COLUMN LAYOUT ─────────────────────────────── */}
+        <div style={cs.twoCol}>
+
+          {/* LEFT — variant gallery + details ──────────────── */}
+          <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
+
+            {/* Variant selector pills */}
+            <div style={cs.card}>
+              <p style={cs.cardLabel}><Layers size={14} /> Select Variant</p>
+              <div style={{ display:'flex', flexWrap:'wrap', gap:8, marginTop:12 }}>
+                {variants.map(v => {
+                  const isActive = activeVariant?.id === v.id;
+                  return (
+                    <button key={v.id}
+                      onClick={() => { setActiveVariant(v); setImgIdx(0); }}
+                      style={{ ...cs.variantPill, ...(isActive ? cs.variantPillActive : {}) }}>
+                      {v.size} {v.weightage}
+                      {v.is_default && <span style={{ marginLeft:4, fontSize:9, opacity:0.7 }}>DEFAULT</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Image gallery */}
+            {activeVariant && (
+              <div style={cs.card}>
+                {/* Main image */}
+                <div style={cs.mainImgWrap}>
+                  {curImg ? (
+                    <img src={curImg} alt={activeVariant.title}
+                      style={{ width:'100%', height:'100%', objectFit:'cover', borderRadius:12 }}
+                      onError={e => e.target.src='https://placehold.co/600x400/e8f5f1/0D614E?text=No+Image'} />
+                  ) : (
+                    <div style={cs.noImg}><Image size={40} color="#CBD5E1" /><span style={{color:'#94A3B8', marginTop:8}}>No image</span></div>
+                  )}
+                  {/* cover badge */}
+                  {media[imgIdx]?.is_cover && (
+                    <span style={cs.coverBadge}><Award size={10} /> Cover</span>
+                  )}
+                  {media.length > 1 && (
+                    <>
+                      <button style={cs.navBtn('left')} onClick={() => goImg(-1)}><ChevronLeft size={18}/></button>
+                      <button style={cs.navBtn('right')} onClick={() => goImg(1)}><ChevronRight size={18}/></button>
+                      <span style={cs.imgCounter}>{imgIdx+1} / {media.length}</span>
+                    </>
+                  )}
+                </div>
+                {/* Thumbnails */}
+                {media.length > 0 && (
+                  <div style={cs.thumbRow}>
+                    {media.map((m, i) => (
+                      <div key={m.id} onClick={() => setImgIdx(i)}
+                        style={{ ...cs.thumb, ...(imgIdx===i ? cs.thumbActive : {}) }}>
+                        <img src={m.media_url} alt={`img${i}`} style={{ width:'100%', height:'100%', objectFit:'cover' }}
+                          onError={e => e.target.src='https://placehold.co/80/e8f5f1/0D614E?text=?'} />
+                        {m.is_cover && <span style={cs.thumbCoverDot} />}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Variant quick-details card */}
+            {activeVariant && (
+              <div style={cs.card}>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
+                  <div>
+                    <p style={cs.cardLabel}><Tag size={13} /> {activeVariant.variant_code}</p>
+                    <h3 style={{ margin:'4px 0 0', fontSize:17, fontWeight:700, color:'#0F172A' }}>{activeVariant.title}</h3>
+                  </div>
+                  <StatusChip status={activeVariant.status} />
+                </div>
+
+                {/* Pricing highlight */}
+                <div style={cs.pricingBox}>
+                  <div>
+                    <span style={{ fontSize:26, fontWeight:800, color:'#0D614E' }}>₹{parseFloat(activeVariant.selling_price).toFixed(0)}</span>
+                    <span style={{ fontSize:13, color:'#94A3B8', textDecoration:'line-through', marginLeft:8 }}>₹{parseFloat(activeVariant.mrp).toFixed(0)}</span>
+                  </div>
+                  <span style={cs.discountBadge}>{discount(activeVariant.mrp, activeVariant.selling_price)}% OFF</span>
+                </div>
+
+                <div style={{ display:'flex', flexWrap:'wrap', gap:6, margin:'12px 0 16px' }}>
+                  {activeVariant.is_free_shipping && <Tag2><Truck size={11} /> Free Shipping</Tag2>}
+                  {activeVariant.pay_on_delivery  && <Tag2><DollarSign size={11} /> COD Available</Tag2>}
+                  {activeVariant.is_returnable    && <Tag2><RotateCcw size={11} /> {activeVariant.returnable_days}d Returns</Tag2>}
+                </div>
+
+                <InfoRow label="SKU"         value={activeVariant.variant_code} mono />
+                <InfoRow label="HSN Code"    value={activeVariant.hsn_code} />
+                <InfoRow label="Size"        value={`${activeVariant.size} ${activeVariant.weightage}`} />
+                <InfoRow label="Physical State" value={activeVariant.physical_state} />
+                <InfoRow label="Calc. Mode"  value={activeVariant.calculation_mode?.replace('_', ' ')} />
+                <InfoRow label="Cost / Item" value={`₹${activeVariant.cost_per_item}`} />
+
+                {/* Stock bar */}
+                <div style={{ margin:'16px 0 8px' }}>
+                  <div style={{ display:'flex', justifyContent:'space-between', marginBottom:6 }}>
+                    <span style={{ fontSize:12, color:'#64748B', fontWeight:600 }}>Stock</span>
+                    <span style={{ fontSize:12, fontWeight:700, color: activeVariant.stock < activeVariant.low_stock_threshold ? '#DC2626' : '#059669' }}>
+                      {activeVariant.stock} units
+                      {activeVariant.stock < activeVariant.low_stock_threshold && ' ⚠️ Low'}
+                    </span>
+                  </div>
+                  <div style={{ height:6, background:'#F1F5F9', borderRadius:3, overflow:'hidden' }}>
+                    <div style={{ height:'100%', borderRadius:3,
+                      width:`${Math.min((activeVariant.stock / (activeVariant.low_stock_threshold * 10)) * 100, 100)}%`,
+                      background: activeVariant.stock < activeVariant.low_stock_threshold ? '#EF4444' : 'linear-gradient(90deg,#0D614E,#1A8A70)' }} />
+                  </div>
+                </div>
+
+                {/* Taxes */}
+                {activeVariant.taxes?.length > 0 && (
+                  <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginTop:12 }}>
+                    {activeVariant.taxes.map(t => (
+                      <Tag2 key={t.name} bg="#F1F5F9" color="#64748B"><Hash size={10}/> {t.name} {t.rate}%</Tag2>
+                    ))}
+                  </div>
+                )}
+
+                {/* Action buttons */}
+                <div style={{ display:'flex', gap:8, marginTop:20 }}>
+                  <button style={cs.btnApprove} onClick={() => setModal({ variant: activeVariant, type:'approve' })}>
+                    <CheckCircle size={14}/> Approve
+                  </button>
+                  <button style={cs.btnReject} onClick={() => setModal({ variant: activeVariant, type:'reject' })}>
+                    <XCircle size={14}/> Reject
+                  </button>
+                  <button style={cs.btnSuspend} onClick={() => setModal({ variant: activeVariant, type:'suspend' })}>
+                    <Ban size={14}/> Suspend
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* RIGHT — product info + tabs ──────────────────── */}
+          <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
+
+            {/* Product info accordion */}
+            <div style={cs.card}>
+              <button style={cs.accordionHead} onClick={() => setExpandInfo(e => !e)}>
+                <span style={{ display:'flex', alignItems:'center', gap:8, fontSize:15, fontWeight:700, color:'#0F172A' }}>
+                  <Info size={16} color="#0D614E" /> Product Information
+                </span>
+                {expandInfo ? <ChevronUp size={16} color="#94A3B8" /> : <ChevronDown size={16} color="#94A3B8" />}
+              </button>
+
+              {expandInfo && (
+                <div style={{ marginTop:16 }}>
+                  {/* ID copy-strip */}
+                  <div style={cs.idStrip}>
+                    <span style={{ fontSize:11, color:'#94A3B8', fontFamily:'monospace' }}>{product.id}</span>
+                    <button style={cs.copyBtn} onClick={() => navigator.clipboard.writeText(product.id)}>
+                      <Copy size={11} /> Copy
+                    </button>
+                  </div>
+
+                  <div style={cs.infoGrid}>
+                    {/* Column 1 */}
+                    <div>
+                      <p style={cs.infoGroupLabel}><Info size={12}/> Basic</p>
+                      <InfoRow label="Brand"         value={product.brand_name} />
+                      <InfoRow label="Manufacturer"  value={product.manufacturer} />
+                      <InfoRow label="Origin"        value={product.origin} />
+                      <InfoRow label="Treatment"     value={product.treatment_type || '—'} />
+                      <InfoRow label="Category"      value={product.product_category_name || '—'} />
+                      <InfoRow label="Customer Cat." value={product.customer_category_name || '—'} />
+                    </div>
+
+                    {/* Column 2 */}
+                    <div>
+                      <p style={cs.infoGroupLabel}><Store size={12}/> Vendor</p>
+                      <InfoRow label="Business"   value={product.vendor_business_name} />
+                      <InfoRow label="Phone"      value={product.vendor_phone_number} />
+                      <InfoRow label="Vendor ID"  value={product.vendor_id?.slice(0,12)+'…'} mono />
+                      <p style={{ ...cs.infoGroupLabel, marginTop:16 }}><Shield size={12}/> Flags</p>
+                      <InfoRow label="Is Featured"  value={product.is_featured ? '✅ Yes' : '❌ No'} />
+                      <InfoRow label="Is Nutrition" value={product.is_nutrition ? '✅ Yes' : '❌ No'} />
+                      <InfoRow label="Is Active"    value={product.is_active ? '✅ Yes' : '❌ No'} />
+                      <InfoRow label="Created"      value={fmtDate(product.created_at)} />
+                      <InfoRow label="Updated"      value={fmtDate(product.updated_at)} />
+                    </div>
+                  </div>
+
+                  {/* Description tabs */}
+                  {[
+                    { label:'Description',    key:'full_description' },
+                    { label:'How to Use',     key:'how_to_use' },
+                    { label:'Benefits',       key:'benifits' },
+                    { label:'Compositions',   key:'compositions' },
+                    { label:'Side Effects',   key:'side_effects' },
+                    { label:'Safety Info',    key:'safety_information' },
+                  ].filter(d => product[d.key]).map(d => (
+                    <div key={d.key} style={cs.descBlock}>
+                      <p style={cs.descLabel}>{d.label}</p>
+                      <p style={cs.descText}>{product[d.key]}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* TABS */}
+            <div style={cs.card}>
+              {/* Tab header */}
+              <div style={cs.tabBar}>
+                {[
+                  { id:'variants', label:'Variants',  icon:<Layers size={13}/>,     count:variants.length },
+                  { id:'orders',   label:'Orders',    icon:<ShoppingBag size={13}/>, count:MOCK_ORDERS.length },
+                  { id:'reviews',  label:'Reviews',   icon:<Star size={13}/>,        count:MOCK_REVIEWS.length },
+                  { id:'analytics',label:'Analytics', icon:<BarChart2 size={13}/>,   count:null },
+                ].map(t => (
+                  <button key={t.id} style={{ ...cs.tabBtn, ...(tab===t.id ? cs.tabBtnActive : {}) }}
+                    onClick={() => setTab(t.id)}>
+                    {t.icon} {t.label}
+                    {t.count != null && (
+                      <span style={{ ...cs.tabCount, ...(tab===t.id ? cs.tabCountActive : {}) }}>{t.count}</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+
+              {/* ── VARIANTS TAB ────────────────────────────── */}
+              {tab === 'variants' && (
+                <div style={{ marginTop:16 }}>
+                  {/* toolbar */}
+                  <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:14 }}>
+                    <div style={cs.searchBox}>
+                      <Search size={14} color="#94A3B8" />
+                      <input placeholder="Search variants…" value={search}
+                        onChange={e => setSearch(e.target.value)}
+                        style={{ border:'none', outline:'none', background:'transparent', fontSize:13, flex:1, color:'#1E293B' }} />
+                      {search && <button onClick={() => setSearch('')} style={{ background:'none', border:'none', cursor:'pointer', color:'#94A3B8' }}><X size={14}/></button>}
+                    </div>
+                    <div ref={filterRef} style={{ position:'relative' }}>
+                      <button style={cs.filterBtn} onClick={() => setShowFilter(f => !f)}>
+                        <Filter size={13} /> Filter
+                        {statusFilter !== 'all' && <span style={cs.filterDot} />}
+                      </button>
+                      {showFilter && (
+                        <div style={cs.filterDrop}>
+                          {['all','approved','pending','rejected','suspended'].map(s => (
+                            <button key={s} style={cs.filterOpt} onClick={() => { setStatusFilter(s); setShowFilter(false); }}>
+                              {s === 'all' ? 'All statuses' : <StatusChip status={s} />}
+                              {statusFilter === s && <Check size={13} color="#0D614E" />}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <button style={cs.filterBtn} onClick={() => {
+                      const csv = [
+                        'Title,SKU,Size,MRP,Price,Stock,Status',
+                        ...variants.map(v => `${v.title},${v.variant_code},${v.size} ${v.weightage},${v.mrp},${v.selling_price},${v.stock},${v.status}`)
+                      ].join('\n');
+                      const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob([csv],{type:'text/csv'})), download:'variants.csv' });
+                      a.click();
+                    }}>
+                      <Download size={13} /> Export
+                    </button>
+                  </div>
+
+                  {/* bulk bar */}
+                  {selected.length > 0 && (
+                    <div style={cs.bulkBar}>
+                      <span style={{ fontSize:13, fontWeight:600, color:'#0D614E' }}>{selected.length} selected</span>
+                      <div style={{ display:'flex', gap:6 }}>
+                        {['approve','reject','suspend'].map(a => (
+                          <button key={a} style={cs.bulkBtn(a)} onClick={() => {
+                            const r = a !== 'approve' ? window.prompt(`Reason for ${a}ing:`) || '' : '';
+                            if (a !== 'approve' && !r.trim()) return;
+                            selected.forEach(id => doAction(id, a, r));
+                          }}>
+                            {a.charAt(0).toUpperCase()+a.slice(1)} all
+                          </button>
+                        ))}
+                        <button style={cs.bulkBtn('clear')} onClick={() => setSelected([])}><X size={12}/></button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* variant grid */}
+                  <div style={cs.variantGrid}>
+                    {filtered.map(v => {
+                      const cover = coverOf(v.media);
+                      const isActive = activeVariant?.id === v.id;
+                      const disc = discount(v.mrp, v.selling_price);
+                      return (
+                        <div key={v.id}
+                          style={{ ...cs.variantCard, ...(isActive ? cs.variantCardActive : {}) }}
+                          onClick={() => { setActiveVariant(v); setImgIdx(0); }}>
+                          {/* checkbox */}
+                          <div style={{ position:'absolute', top:8, left:8, zIndex:2 }}
+                            onClick={e => { e.stopPropagation();
+                              setSelected(prev => prev.includes(v.id) ? prev.filter(x=>x!==v.id) : [...prev,v.id]); }}>
+                            <div style={{ width:18, height:18, borderRadius:5,
+                              background: selected.includes(v.id) ? '#0D614E' : 'rgba(255,255,255,0.9)',
+                              border:'2px solid '+(selected.includes(v.id)?'#0D614E':'#CBD5E1'),
+                              display:'flex', alignItems:'center', justifyContent:'center' }}>
+                              {selected.includes(v.id) && <Check size={10} color="#fff"/>}
+                            </div>
+                          </div>
+
+                          {/* discount badge */}
+                          {disc > 0 && (
+                            <span style={cs.discBadgeCard}>{disc}%<br/>OFF</span>
+                          )}
+
+                          {/* image */}
+                          <div style={cs.variantCardImg}>
+                            {cover ? (
+                              <img src={cover} alt={v.title} style={{ width:'100%', height:'100%', objectFit:'cover' }}
+                                onError={e=>e.target.src='https://placehold.co/200/e8f5f1/0D614E?text=?'} />
+                            ) : (
+                              <div style={{ width:'100%', height:'100%', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                                <Image size={28} color="#CBD5E1" />
+                              </div>
+                            )}
+                          </div>
+
+                          <div style={{ padding:'10px 10px 12px' }}>
+                            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:4 }}>
+                              <span style={{ fontSize:12, fontWeight:700, color:'#0F172A', lineHeight:1.3 }}>{v.title}</span>
+                              <StatusChip status={v.status} />
+                            </div>
+                            <p style={{ fontSize:11, color:'#94A3B8', margin:'0 0 8px', fontFamily:'monospace' }}>{v.variant_code}</p>
+                            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                              <div>
+                                <span style={{ fontSize:15, fontWeight:800, color:'#0D614E' }}>₹{parseFloat(v.selling_price).toFixed(0)}</span>
+                                <span style={{ fontSize:10, color:'#94A3B8', textDecoration:'line-through', marginLeft:4 }}>₹{parseFloat(v.mrp).toFixed(0)}</span>
+                              </div>
+                              <span style={{ fontSize:11, fontWeight:600, color: v.stock < v.low_stock_threshold ? '#DC2626' : '#64748B' }}>
+                                {v.stock} units
+                              </span>
+                            </div>
+                            <div style={{ fontSize:11, color:'#94A3B8', marginTop:4 }}>{v.size} {v.weightage} · {v.physical_state}</div>
+                            {/* mini actions */}
+                            <div style={{ display:'flex', gap:4, marginTop:8 }} onClick={e=>e.stopPropagation()}>
+                              <button style={cs.miniBtn('#EFF6FF','#3B82F6')} onClick={() => setModal({ variant:v, type:'view' })}><Eye size={11}/></button>
+                              <button style={cs.miniBtn('#ECFDF5','#059669')} onClick={() => setModal({ variant:v, type:'approve' })}><CheckCircle size={11}/></button>
+                              <button style={cs.miniBtn('#FEF2F2','#DC2626')} onClick={() => setModal({ variant:v, type:'reject' })}><XCircle size={11}/></button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {filtered.length === 0 && (
+                      <div style={{ gridColumn:'1/-1', textAlign:'center', padding:40, color:'#94A3B8' }}>
+                        <Package size={32} color="#CBD5E1" />
+                        <p style={{ marginTop:10 }}>No variants match your filters</p>
+                        <button style={cs.btnPrimary} onClick={() => { setSearch(''); setStatusFilter('all'); }}>Clear filters</button>
+                      </div>
+                    )}
+                  </div>
+
+                  <p style={{ fontSize:12, color:'#94A3B8', marginTop:10, textAlign:'right' }}>
+                    Showing {filtered.length} of {variants.length}
+                  </p>
+                </div>
+              )}
+
+              {/* ── ORDERS TAB ──────────────────────────────── */}
+              {tab === 'orders' && (
+                <div style={{ marginTop:16 }}>
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16, flexWrap:'wrap', gap:10 }}>
+                    <div style={{ display:'flex', gap:20 }}>
+                      <div>
+                        <p style={cs.metaLabel}>Total Revenue</p>
+                        <p style={{ fontSize:20, fontWeight:800, color:'#059669', margin:0 }}>{fmt(totalRevenue)}</p>
+                      </div>
+                      <div>
+                        <p style={cs.metaLabel}>Orders</p>
+                        <p style={{ fontSize:20, fontWeight:800, color:'#0F172A', margin:0 }}>{MOCK_ORDERS.length}</p>
+                      </div>
+                    </div>
+                    <button style={cs.filterBtn}><Download size={13}/> Export</button>
+                  </div>
+                  <div style={{ overflowX:'auto' }}>
+                    <table style={cs.table}>
+                      <thead><tr style={cs.thead}>
+                        {['Order','Customer','Variant','Qty','Amount','Date','Payment','Status'].map(h => (
+                          <th key={h} style={cs.th}>{h}</th>
+                        ))}
+                      </tr></thead>
+                      <tbody>
+                        {MOCK_ORDERS.map(o => (
+                          <tr key={o.id} style={cs.tr}>
+                            <td style={cs.td}><span style={{ fontFamily:'monospace', fontWeight:700, color:'#0D614E', fontSize:12 }}>{o.id}</span></td>
+                            <td style={cs.td}>
+                              <div style={{ fontWeight:600, fontSize:13, color:'#1E293B' }}>{o.customer}</div>
+                              <div style={{ fontSize:11, color:'#94A3B8' }}>{o.email}</div>
+                            </td>
+                            <td style={cs.td}><Tag2 bg="#F1F5F9" color="#64748B">{o.variant}</Tag2></td>
+                            <td style={cs.td}><span style={{ fontWeight:700 }}>{o.qty}×</span></td>
+                            <td style={cs.td}><span style={{ fontWeight:700, color:'#1E293B' }}>{fmt(o.amount)}</span></td>
+                            <td style={cs.td}><span style={{ fontSize:12, color:'#64748B' }}>{fmtDate(o.date)}</span></td>
+                            <td style={cs.td}><Tag2 bg="#F8FAFC" color="#64748B">{o.payment}</Tag2></td>
+                            <td style={cs.td}><OrderStatus s={o.status}/></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* ── REVIEWS TAB ─────────────────────────────── */}
+              {tab === 'reviews' && (
+                <div style={{ marginTop:16 }}>
+                  <div style={{ display:'flex', gap:20, alignItems:'center', marginBottom:20, padding:'14px 18px',
+                    background:'#F8FAFC', borderRadius:12, border:'1px solid #E2E8F0' }}>
+                    <div style={{ textAlign:'center' }}>
+                      <p style={{ fontSize:36, fontWeight:900, color:'#0F172A', margin:0 }}>{avgRating.toFixed(1)}</p>
+                      <Stars rating={avgRating} />
+                      <p style={{ fontSize:11, color:'#94A3B8', margin:'4px 0 0' }}>{MOCK_REVIEWS.length} reviews</p>
+                    </div>
+                    <div style={{ flex:1 }}>
+                      {[5,4,3,2,1].map(n => {
+                        const cnt = MOCK_REVIEWS.filter(r=>r.rating===n).length;
+                        const pct = (cnt/MOCK_REVIEWS.length)*100;
+                        return (
+                          <div key={n} style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4 }}>
+                            <span style={{ fontSize:11, color:'#64748B', width:8 }}>{n}</span>
+                            <Star size={10} fill="#F59E0B" color="#F59E0B" />
+                            <div style={{ flex:1, height:6, background:'#E2E8F0', borderRadius:3, overflow:'hidden' }}>
+                              <div style={{ width:`${pct}%`, height:'100%', background:'#F59E0B', borderRadius:3 }} />
+                            </div>
+                            <span style={{ fontSize:11, color:'#94A3B8', width:16 }}>{cnt}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  {MOCK_REVIEWS.map(r => (
+                    <div key={r.id} style={cs.reviewCard}>
+                      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', flexWrap:'wrap', gap:8 }}>
+                        <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                          <div style={cs.avatar}>{r.customer.charAt(0)}</div>
+                          <div>
+                            <p style={{ margin:0, fontWeight:700, fontSize:13, color:'#1E293B' }}>{r.customer}</p>
+                            <Tag2 bg="#F1F5F9" color="#64748B">{r.variant}</Tag2>
+                          </div>
+                        </div>
+                        <div style={{ textAlign:'right' }}>
+                          <Stars rating={r.rating} />
+                          <p style={{ fontSize:11, color:'#94A3B8', margin:'4px 0 0' }}>{fmtDate(r.date)}</p>
+                        </div>
+                      </div>
+                      <p style={{ fontSize:13, color:'#475569', margin:'10px 0 8px', lineHeight:1.7, fontStyle:'italic' }}>
+                        "{r.comment}"
+                      </p>
+                      <p style={{ fontSize:11, color:'#94A3B8', margin:0 }}>
+                        <CheckCircle size={10} color="#059669" style={{marginRight:4}}/>{r.helpful} found this helpful
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* ── ANALYTICS TAB ───────────────────────────── */}
+              {tab === 'analytics' && (
+                <div style={{ marginTop:16 }}>
+                  <p style={{ color:'#64748B', fontSize:13, marginBottom:20 }}>Revenue — last 7 days (mock)</p>
+                  {/* Bar chart */}
+                  <div style={{ display:'flex', alignItems:'flex-end', gap:8, height:140, padding:'0 4px', marginBottom:24 }}>
+                    {[
+                      { day:'Mon', h:60 }, { day:'Tue', h:80 }, { day:'Wed', h:45 },
+                      { day:'Thu', h:90 }, { day:'Fri', h:70 }, { day:'Sat', h:55 }, { day:'Sun', h:75 }
+                    ].map(b => (
+                      <div key={b.day} style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:6 }}>
+                        <div style={{ width:'100%', height:`${b.h}%`, borderRadius:'6px 6px 0 0',
+                          background:'linear-gradient(180deg,#1A8A70,#0D614E)',
+                          transition:'height 0.6s ease', cursor:'pointer' }} />
+                        <span style={{ fontSize:11, color:'#94A3B8' }}>{b.day}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12, marginBottom:20 }}>
+                    {[
+                      { label:'Revenue',    value:fmt(12500), icon:<DollarSign size={16} color="#059669"/> },
+                      { label:'Orders',     value:'42',        icon:<ShoppingBag size={16} color="#3B82F6"/> },
+                      { label:'Conversion', value:'3.2%',      icon:<Activity size={16} color="#D97706"/> },
+                    ].map(s => (
+                      <div key={s.label} style={{ padding:'14px', background:'#F8FAFC', borderRadius:10,
+                        border:'1px solid #E2E8F0', textAlign:'center' }}>
+                        <div style={{ display:'flex', justifyContent:'center', marginBottom:8 }}>{s.icon}</div>
+                        <p style={{ fontSize:18, fontWeight:800, color:'#0F172A', margin:0 }}>{s.value}</p>
+                        <p style={{ fontSize:11, color:'#94A3B8', margin:'2px 0 0' }}>{s.label}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  <p style={cs.cardLabel}><Zap size={13} /> Top Variants by Stock</p>
+                  {variants.slice(0,5).map((v,i) => (
+                    <div key={v.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'10px 0',
+                      borderBottom:'1px solid #F1F5F9' }}>
+                      <span style={{ fontWeight:800, fontSize:13, color:'#CBD5E1', width:20 }}>#{i+1}</span>
+                      <img src={coverOf(v.media)||'https://placehold.co/32/e8f5f1/0D614E?text=?'} alt=""
+                        style={{ width:32, height:32, borderRadius:6, objectFit:'cover' }}
+                        onError={e=>e.target.src='https://placehold.co/32/e8f5f1/0D614E?text=?'} />
+                      <span style={{ flex:1, fontSize:13, fontWeight:600, color:'#1E293B' }}>{v.title}</span>
+                      <span style={{ fontSize:13, fontWeight:700, color:'#0D614E' }}>{v.stock} units</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ════════════ ACTION MODAL ════════════ */}
+      {modal && (
+        <div style={cs.modalBackdrop} onClick={() => { setModal(null); setReason(''); }}>
+          <div style={cs.modalBox} onClick={e => e.stopPropagation()}>
+            {/* header */}
+            <div style={cs.modalHeader}>
+              <h3 style={{ margin:0, fontSize:17, fontWeight:700, color:'#0F172A' }}>
+                {modal.type === 'view'    ? 'Variant Details' :
+                 modal.type === 'approve' ? 'Approve Variant' :
+                 modal.type === 'reject'  ? 'Reject Variant'  : 'Suspend Variant'}
+              </h3>
+              <button style={cs.modalClose} onClick={() => { setModal(null); setReason(''); }}><X size={16}/></button>
+            </div>
+
+            <div style={{ padding:24 }}>
+              {/* variant summary strip */}
+              <div style={cs.modalVariantStrip}>
+                <img src={coverOf(modal.variant.media)||'https://placehold.co/56/e8f5f1/0D614E?text=?'} alt=""
+                  style={{ width:56, height:56, objectFit:'cover', borderRadius:10 }}
+                  onError={e=>e.target.src='https://placehold.co/56/e8f5f1/0D614E?text=?'} />
+                <div style={{ flex:1 }}>
+                  <p style={{ margin:0, fontWeight:700, fontSize:14, color:'#0F172A' }}>{modal.variant.title}</p>
+                  <p style={{ margin:'2px 0 6px', fontSize:11, color:'#94A3B8', fontFamily:'monospace' }}>{modal.variant.variant_code}</p>
+                  <StatusChip status={modal.variant.status} />
+                </div>
+                <div style={{ textAlign:'right' }}>
+                  <p style={{ margin:0, fontSize:18, fontWeight:800, color:'#0D614E' }}>₹{parseFloat(modal.variant.selling_price).toFixed(0)}</p>
+                  <p style={{ margin:0, fontSize:11, color:'#94A3B8', textDecoration:'line-through' }}>₹{parseFloat(modal.variant.mrp).toFixed(0)}</p>
+                </div>
+              </div>
+
+              {modal.type === 'view' ? (
+                <div style={{ marginTop:16 }}>
+                  <InfoRow label="Size"       value={`${modal.variant.size} ${modal.variant.weightage}`} />
+                  <InfoRow label="HSN Code"   value={modal.variant.hsn_code} />
+                  <InfoRow label="Stock"      value={`${modal.variant.stock} units`} />
+                  <InfoRow label="Returnable" value={modal.variant.is_returnable ? `Yes (${modal.variant.returnable_days}d)` : 'No'} />
+                  <InfoRow label="COD"        value={modal.variant.pay_on_delivery ? 'Yes' : 'No'} />
+                  <InfoRow label="Shipping"   value={modal.variant.is_free_shipping ? 'Free' : `₹${modal.variant.shipping_amount||'—'}`} />
+                </div>
+              ) : (
+                <div style={{ marginTop:16 }}>
+                  {/* Confirmation icon */}
+                  <div style={{ textAlign:'center', padding:'16px 0' }}>
+                    <div style={{ width:56, height:56, borderRadius:28, margin:'0 auto 12px',
+                      background: modal.type==='approve'?'#ECFDF5': modal.type==='reject'?'#FEF2F2':'#FFFBEB',
+                      display:'flex', alignItems:'center', justifyContent:'center' }}>
+                      {modal.type==='approve' && <CheckCircle size={28} color="#059669"/>}
+                      {modal.type==='reject'  && <XCircle size={28} color="#DC2626"/>}
+                      {modal.type==='suspend' && <Ban size={28} color="#D97706"/>}
+                    </div>
+                    <p style={{ fontSize:15, color:'#475569', margin:0 }}>
+                      {modal.type==='approve' ? 'This will make the variant available for purchase.' :
+                       modal.type==='reject'  ? 'This will reject the variant and hide it from the catalog.' :
+                       'This will temporarily suspend the variant.'}
+                    </p>
+                  </div>
+                  {modal.type !== 'approve' && (
+                    <div style={{ marginTop:12 }}>
+                      <label style={{ fontSize:13, fontWeight:600, color:'#475569', display:'block', marginBottom:6 }}>
+                        Reason (required)
+                      </label>
+                      <textarea rows={3} value={reason} onChange={e=>setReason(e.target.value)}
+                        placeholder={`Reason for ${modal.type}ing…`}
+                        style={{ width:'100%', padding:'10px 12px', border:'2px solid #E2E8F0',
+                          borderRadius:10, fontSize:13, fontFamily:'inherit', resize:'vertical',
+                          outline:'none', boxSizing:'border-box', transition:'border-color 0.2s' }}
+                        onFocus={e=>e.target.style.borderColor='#0D614E'}
+                        onBlur={e=>e.target.style.borderColor='#E2E8F0'} />
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div style={cs.modalFooter}>
+              <button style={cs.btnSecondary} onClick={() => { setModal(null); setReason(''); }}>
+                {modal.type==='view' ? 'Close' : 'Cancel'}
+              </button>
+              {modal.type !== 'view' && (
+                <button
+                  disabled={modal.type!=='approve' && !reason.trim()}
+                  style={{
+                    ...cs.btnPrimary,
+                    background: modal.type==='approve'?'linear-gradient(135deg,#0D614E,#1A8A70)':
+                                modal.type==='reject' ?'#DC2626':'#D97706',
+                    opacity: (modal.type!=='approve' && !reason.trim()) ? 0.5 : 1,
+                  }}
+                  onClick={() => doAction(modal.variant.id, modal.type, reason)}>
+                  {modal.type.charAt(0).toUpperCase()+modal.type.slice(1)} Variant
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   STYLES
+═══════════════════════════════════════════════════════════════ */
+const cs = {
+  page: { minHeight:'100vh', background:'#F8FAFC', fontFamily:"'Inter',system-ui,-apple-system,sans-serif" },
+
+  /* loading */
+  center: { display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
+    minHeight:'80vh', gap:8 },
+  leafSpin: { animation:'spin 1.5s linear infinite' },
+
+  /* HERO */
+  heroWrap: { background:'linear-gradient(135deg,#0D614E 0%,#064E3B 60%,#022C22 100%)',
+    padding:'28px 32px 0', position:'relative', overflow:'hidden' },
+  heroInner: { position:'relative', zIndex:1 },
+  heroTitle: { fontSize:30, fontWeight:900, color:'#fff', margin:0, letterSpacing:-0.5 },
+  heroStrip: { display:'flex', gap:0, marginTop:24, borderTop:'1px solid rgba(255,255,255,0.1)' },
+  heroStat: { flex:1, padding:'18px 20px', borderRight:'1px solid rgba(255,255,255,0.1)' },
+  backBtn: { width:38, height:38, borderRadius:10, background:'rgba(255,255,255,0.12)',
+    border:'1px solid rgba(255,255,255,0.2)', color:'#fff', display:'flex', alignItems:'center',
+    justifyContent:'center', cursor:'pointer', transition:'all 0.2s' },
+  heroBtn: { display:'inline-flex', alignItems:'center', gap:6, padding:'9px 18px',
+    background:'#fff', border:'none', borderRadius:10, fontWeight:700, fontSize:13,
+    color:'#0D614E', cursor:'pointer', transition:'all 0.2s' },
+  heroBtnGhost: { display:'inline-flex', alignItems:'center', gap:6, padding:'9px 18px',
+    background:'rgba(255,255,255,0.12)', border:'1px solid rgba(255,255,255,0.2)', borderRadius:10,
+    fontWeight:600, fontSize:13, color:'#fff', cursor:'pointer' },
+
+  /* body */
+  body: { padding:'24px 32px' },
+
+  /* pills */
+  pillRow: { display:'flex', gap:12, flexWrap:'wrap', marginBottom:24 },
+  pill: { display:'flex', alignItems:'center', gap:10, padding:'14px 20px',
+    borderRadius:14, flex:1, minWidth:140 },
+
+  /* two col */
+  twoCol: { display:'grid', gridTemplateColumns:'380px 1fr', gap:20, alignItems:'start' },
+
+  /* card */
+  card: { background:'#fff', borderRadius:16, padding:20, boxShadow:'0 1px 3px rgba(0,0,0,0.07)',
+    border:'1px solid #E2E8F0', position:'relative', overflow:'visible' },
+  cardLabel: { display:'flex', alignItems:'center', gap:6, fontSize:12, fontWeight:700,
+    color:'#94A3B8', textTransform:'uppercase', letterSpacing:0.5, margin:0 },
+
+  /* variant pill selector */
+  variantPill: { padding:'6px 14px', borderRadius:100, border:'2px solid #E2E8F0',
+    background:'#F8FAFC', fontSize:12, fontWeight:600, color:'#64748B', cursor:'pointer',
+    transition:'all 0.2s' },
+  variantPillActive: { background:'#0D614E', borderColor:'#0D614E', color:'#fff',
+    boxShadow:'0 4px 12px rgba(13,97,78,0.3)' },
+
+  /* image gallery */
+  mainImgWrap: { position:'relative', height:280, background:'#F8FAFC', borderRadius:12,
+    overflow:'hidden', display:'flex', alignItems:'center', justifyContent:'center' },
+  noImg: { display:'flex', flexDirection:'column', alignItems:'center' },
+  navBtn: (side) => ({
+    position:'absolute', top:'50%', transform:'translateY(-50%)', [side]: 10,
+    width:32, height:32, borderRadius:8, background:'rgba(255,255,255,0.92)',
+    border:'1px solid #E2E8F0', display:'flex', alignItems:'center', justifyContent:'center',
+    cursor:'pointer', boxShadow:'0 2px 8px rgba(0,0,0,0.12)', zIndex:2 }),
+  imgCounter: { position:'absolute', bottom:10, left:'50%', transform:'translateX(-50%)',
+    background:'rgba(0,0,0,0.6)', color:'#fff', fontSize:11, fontWeight:600,
+    padding:'3px 10px', borderRadius:100 },
+  coverBadge: { position:'absolute', top:8, right:8, background:'#0D614E', color:'#fff',
+    fontSize:10, fontWeight:700, padding:'3px 10px', borderRadius:100,
+    display:'flex', alignItems:'center', gap:4 },
+  thumbRow: { display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:6, marginTop:10 },
+  thumb: { aspectRatio:1, borderRadius:8, overflow:'hidden', border:'2px solid #E2E8F0',
+    cursor:'pointer', transition:'all 0.2s', position:'relative' },
+  thumbActive: { borderColor:'#0D614E', boxShadow:'0 0 0 3px rgba(13,97,78,0.2)' },
+  thumbCoverDot: { position:'absolute', bottom:3, right:3, width:6, height:6,
+    borderRadius:3, background:'#0D614E', border:'1px solid #fff' },
+
+  /* pricing */
+  pricingBox: { display:'flex', alignItems:'center', justifyContent:'space-between',
+    background:'linear-gradient(135deg,#F0FDF4,#ECFDF5)', borderRadius:12,
+    padding:'12px 16px', margin:'12px 0 0', border:'1px solid #D1FAE5' },
+  discountBadge: { padding:'4px 12px', background:'#0D614E', color:'#fff',
+    borderRadius:100, fontSize:12, fontWeight:800 },
+
+  /* accordion */
+  accordionHead: { display:'flex', justifyContent:'space-between', alignItems:'center',
+    width:'100%', background:'none', border:'none', cursor:'pointer', padding:0 },
+  idStrip: { display:'flex', alignItems:'center', justifyContent:'space-between',
+    background:'#F8FAFC', borderRadius:8, padding:'8px 12px', marginBottom:16,
+    border:'1px solid #E2E8F0' },
+  copyBtn: { display:'inline-flex', alignItems:'center', gap:4, padding:'3px 8px',
+    background:'none', border:'1px solid #E2E8F0', borderRadius:6, fontSize:11,
+    color:'#64748B', cursor:'pointer' },
+  infoGrid: { display:'grid', gridTemplateColumns:'1fr 1fr', gap:16, marginBottom:16 },
+  infoGroupLabel: { display:'flex', alignItems:'center', gap:6, fontSize:11, fontWeight:700,
+    color:'#94A3B8', textTransform:'uppercase', letterSpacing:0.5, margin:'0 0 8px' },
+  descBlock: { marginTop:16, padding:'12px 14px', background:'#F8FAFC',
+    borderRadius:10, border:'1px solid #E2E8F0' },
+  descLabel: { fontSize:11, fontWeight:700, color:'#94A3B8', textTransform:'uppercase',
+    letterSpacing:0.5, margin:'0 0 4px' },
+  descText: { fontSize:13, color:'#475569', lineHeight:1.7, margin:0 },
+
+  /* tabs */
+  tabBar: { display:'flex', gap:2, borderBottom:'2px solid #F1F5F9', paddingBottom:0,
+    overflowX:'auto' },
+  tabBtn: { display:'inline-flex', alignItems:'center', gap:6, padding:'10px 16px',
+    background:'none', border:'none', borderBottom:'3px solid transparent', marginBottom:-2,
+    fontSize:13, fontWeight:600, color:'#94A3B8', cursor:'pointer', whiteSpace:'nowrap',
+    transition:'all 0.2s' },
+  tabBtnActive: { color:'#0D614E', borderBottomColor:'#0D614E' },
+  tabCount: { display:'inline-flex', alignItems:'center', justifyContent:'center',
+    padding:'0 7px', height:18, background:'#F1F5F9', borderRadius:100,
+    fontSize:10, fontWeight:700, color:'#64748B' },
+  tabCountActive: { background:'#0D614E', color:'#fff' },
+
+  /* variant grid */
+  variantGrid: { display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))', gap:12 },
+  variantCard: { borderRadius:14, border:'2px solid #E2E8F0', background:'#fff',
+    cursor:'pointer', transition:'all 0.25s', overflow:'hidden', position:'relative' },
+  variantCardActive: { borderColor:'#0D614E', boxShadow:'0 0 0 4px rgba(13,97,78,0.1)' },
+  variantCardImg: { height:130, background:'#F8FAFC', overflow:'hidden' },
+  discBadgeCard: { position:'absolute', top:8, right:8, background:'#DC2626', color:'#fff',
+    fontSize:9, fontWeight:800, padding:'3px 7px', borderRadius:6, textAlign:'center',
+    lineHeight:1.2, zIndex:1 },
+
+  /* search */
+  searchBox: { display:'flex', alignItems:'center', gap:8, flex:1, minWidth:180,
+    padding:'0 12px', border:'2px solid #E2E8F0', borderRadius:10, background:'#F8FAFC',
+    transition:'border-color 0.2s' },
+  filterBtn: { display:'inline-flex', alignItems:'center', gap:6, padding:'8px 14px',
+    background:'#fff', border:'2px solid #E2E8F0', borderRadius:10, fontSize:12,
+    fontWeight:600, color:'#64748B', cursor:'pointer', position:'relative',
+    transition:'all 0.2s', flexShrink:0 },
+  filterDot: { position:'absolute', top:-3, right:-3, width:8, height:8,
+    borderRadius:4, background:'#0D614E', border:'2px solid #fff' },
+  filterDrop: { position:'absolute', top:'calc(100% + 8px)', right:0,
+    background:'#fff', borderRadius:12, boxShadow:'0 8px 32px rgba(0,0,0,0.12)',
+    minWidth:180, zIndex:100, padding:6, border:'1px solid #E2E8F0' },
+  filterOpt: { display:'flex', justifyContent:'space-between', alignItems:'center',
+    width:'100%', padding:'8px 12px', background:'none', border:'none', borderRadius:8,
+    cursor:'pointer', fontSize:13, color:'#475569', fontWeight:500,
+    transition:'background 0.15s' },
+
+  /* bulk */
+  bulkBar: { display:'flex', justifyContent:'space-between', alignItems:'center',
+    padding:'10px 14px', background:'#E8F5F1', borderRadius:10, marginBottom:12,
+    border:'2px solid #0D614E' },
+  bulkBtn: (type) => ({
+    padding:'5px 12px', borderRadius:8, border:'none', fontSize:12, fontWeight:600,
+    cursor:'pointer', display:'inline-flex', alignItems:'center', gap:4,
+    background: type==='approve'?'#0D614E': type==='reject'?'#DC2626': type==='suspend'?'#D97706':'#E2E8F0',
+    color: type==='clear'?'#64748B':'#fff',
+  }),
+
+  /* mini action btns */
+  miniBtn: (bg,color) => ({ width:24, height:24, borderRadius:6, border:'none',
+    background:bg, color, cursor:'pointer', display:'inline-flex', alignItems:'center', justifyContent:'center' }),
+
+  /* action buttons */
+  btnApprove: { display:'inline-flex', alignItems:'center', gap:6, flex:1, justifyContent:'center',
+    padding:'9px 0', background:'#ECFDF5', border:'2px solid #D1FAE5',
+    borderRadius:10, fontSize:13, fontWeight:700, color:'#059669', cursor:'pointer' },
+  btnReject: { display:'inline-flex', alignItems:'center', gap:6, flex:1, justifyContent:'center',
+    padding:'9px 0', background:'#FEF2F2', border:'2px solid #FECACA',
+    borderRadius:10, fontSize:13, fontWeight:700, color:'#DC2626', cursor:'pointer' },
+  btnSuspend: { display:'inline-flex', alignItems:'center', gap:6, flex:1, justifyContent:'center',
+    padding:'9px 0', background:'#FFFBEB', border:'2px solid #FDE68A',
+    borderRadius:10, fontSize:13, fontWeight:700, color:'#D97706', cursor:'pointer' },
+  btnPrimary: { display:'inline-flex', alignItems:'center', gap:6, padding:'10px 20px',
+    background:'linear-gradient(135deg,#0D614E,#1A8A70)', border:'none', borderRadius:10,
+    fontWeight:700, fontSize:13, color:'#fff', cursor:'pointer' },
+  btnSecondary: { display:'inline-flex', alignItems:'center', gap:6, padding:'10px 20px',
+    background:'#F8FAFC', border:'2px solid #E2E8F0', borderRadius:10,
+    fontWeight:600, fontSize:13, color:'#64748B', cursor:'pointer' },
+
+  /* table */
+  table: { width:'100%', borderCollapse:'collapse', fontSize:13 },
+  thead: { background:'#F8FAFC' },
+  th: { padding:'10px 14px', textAlign:'left', fontSize:11, fontWeight:700, color:'#94A3B8',
+    textTransform:'uppercase', letterSpacing:0.5, borderBottom:'2px solid #E2E8F0',
+    whiteSpace:'nowrap' },
+  tr: { borderBottom:'1px solid #F1F5F9', transition:'background 0.15s', cursor:'default' },
+  td: { padding:'10px 14px', verticalAlign:'middle' },
+
+  /* meta label */
+  metaLabel: { fontSize:11, color:'#94A3B8', fontWeight:600, textTransform:'uppercase', margin:'0 0 2px' },
+
+  /* reviews */
+  reviewCard: { padding:'16px', background:'#F8FAFC', borderRadius:12, marginBottom:12,
+    border:'1px solid #E2E8F0', transition:'border-color 0.2s' },
+  avatar: { width:38, height:38, borderRadius:19, background:'linear-gradient(135deg,#0D614E,#1A8A70)',
+    color:'#fff', display:'flex', alignItems:'center', justifyContent:'center',
+    fontWeight:800, fontSize:16, flexShrink:0 },
+
+  /* modal */
+  modalBackdrop: { position:'fixed', inset:0, background:'rgba(0,0,0,0.45)',
+    display:'flex', alignItems:'center', justifyContent:'center', zIndex:1000,
+    backdropFilter:'blur(6px)', padding:20 },
+  modalBox: { background:'#fff', borderRadius:20, maxWidth:520, width:'100%',
+    maxHeight:'90vh', overflow:'auto',
+    boxShadow:'0 24px 80px rgba(0,0,0,0.2)' },
+  modalHeader: { display:'flex', justifyContent:'space-between', alignItems:'center',
+    padding:'20px 24px', borderBottom:'1px solid #F1F5F9', background:'#F8FAFC',
+    borderRadius:'20px 20px 0 0' },
+  modalClose: { width:32, height:32, borderRadius:8, background:'#F1F5F9',
+    border:'none', display:'flex', alignItems:'center', justifyContent:'center',
+    cursor:'pointer', color:'#64748B', transition:'all 0.2s' },
+  modalVariantStrip: { display:'flex', alignItems:'center', gap:14, padding:'14px 16px',
+    background:'#F8FAFC', borderRadius:12, border:'1px solid #E2E8F0' },
+  modalFooter: { display:'flex', justifyContent:'flex-end', gap:10, padding:'16px 24px',
+    borderTop:'1px solid #F1F5F9', background:'#FAFAFA', borderRadius:'0 0 20px 20px' },
+};
+
+/* inject spin keyframe */
+if (typeof document !== 'undefined') {
+  const style = document.createElement('style');
+  style.textContent = `
+    @keyframes spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+    * { box-sizing: border-box; }
+    @media(max-width:1100px){
+      .pd-two-col { grid-template-columns: 1fr !important; }
+      .pd-hero-strip { flex-wrap: wrap; }
+      .pd-two-col > div:first-child { max-width: 100%; }
+    }
+    @media(max-width:640px){
+      .pd-hero { padding: 20px 16px 0 !important; }
+      .pd-body { padding: 16px !important; }
+      .pd-pill-row { flex-direction: column; }
+    }
+    table tr:hover { background: #F8FAFC; }
+    button:hover { opacity: 0.9; }
+  `;
+  document.head.appendChild(style);
+}

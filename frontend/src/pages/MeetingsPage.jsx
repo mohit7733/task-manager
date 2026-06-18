@@ -370,7 +370,7 @@ export default function MeetingsPage() {
               type="submit"
               form="create-meeting-form"
               disabled={saving}
-              className={`flex-1 rounded-xl py-2.5 text-sm font-semibold disabled:opacity-50 ${brand.gradient} ${brand.gradientHover}`}
+              className={`flex-1 rounded-xl py-2.5 text-sm font-semibold disabled:opacity-50 text-white ${brand.gradient} ${brand.gradientHover}`}
             >
               {saving ? "Saving…" : editingId ? "Save Changes" : "Create Meeting"}
             </button>
@@ -436,13 +436,14 @@ export default function MeetingsPage() {
                 />
               </div>
               <div>
-                <FieldLabel>Meeting time</FieldLabel>
+                <FieldLabel required>Meeting time</FieldLabel>
                 <input
                   type="time"
                   name="meeting_time"
                   value={formData.meeting_time}
                   onChange={handleInputChange}
                   className={fieldClass}
+                  required
                 />
               </div>
             </div>

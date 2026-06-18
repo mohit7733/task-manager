@@ -140,7 +140,7 @@ async function createMeeting(req, res) {
     attachment: req.file ? `/uploads/${req.file.filename}` : body.attachment,
     responsible_person: responsiblePerson
   });
-  await Promise.all(responsiblePerson.map(async (u) => {
+   Promise.all(responsiblePerson.map(async (u) => {
     await sendMeetingAssignedEmail(meeting, { email: u.email, name: u.name }, req.user).catch(() => { });
   }));
   res.status(201).json(meeting);
@@ -283,7 +283,7 @@ async function updateMeeting(req, res) {
   const meeting = await Meeting.findOneAndUpdate({ _id: req.params.id, coo_id: req.user.coo_id }, update, { new: true });
   if (!meeting) return res.status(404).json({ message: "Meeting not found" });
   if (update.responsible_person?.length) {
-    await Promise.all(update.responsible_person.map(async (u) => {
+     Promise.all(update.responsible_person.map(async (u) => {
       await sendMeetingAssignedEmail(meeting, { email: u.email, name: u.name }, req.user).catch(() => { });
     }));
   }

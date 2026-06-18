@@ -190,16 +190,16 @@ async function processMeetingReminders(now) {
     };
 
     // Due / overdue meeting — at most one email per recipient per day
-    if (isBefore(meetingAt, now)) {
-      await dispatchReminder({
-        ...base,
-        type: "overdue",
-        title: `Due Meeting: ${meeting.title}`,
-        message: `${meeting.status} meeting for ${responsible} was scheduled for ${whenText} and is now due.`,
-        reminderKey: `meeting:${meeting._id}:due`
-      });
-      continue;
-    }
+    // if (isBefore(meetingAt, now)) {
+    //   await dispatchReminder({
+    //     ...base,
+    //     type: "overdue",
+    //     title: `Due Meeting: ${meeting.title}`,
+    //     message: `${meeting.status} meeting for ${responsible} was scheduled for ${whenText} and is now due.`,
+    //     reminderKey: `meeting:${meeting._id}:due`
+    //   });
+    //   continue;
+    // }
 
     // Upcoming — reminder date reached (at most one email per recipient per day)
     if (meeting.reminder_date && isReminderDateToday(meeting.reminder_date, now)) {

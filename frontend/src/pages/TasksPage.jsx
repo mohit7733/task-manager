@@ -328,7 +328,7 @@ export default function TasksPage() {
               type="submit"
               form="create-task-form"
               disabled={saving}
-              className={`flex-1 rounded-xl py-2.5 text-sm font-semibold disabled:opacity-50 ${brand.gradient} ${brand.gradientHover}`}
+              className={`flex-1 rounded-xl py-2.5 text-sm font-semibold text-white disabled:opacity-50 ${brand.gradient} ${brand.gradientHover}`}
             >
               {saving ? "Saving…" : editingId ? "Save Changes" : "Create Task"}
             </button>
