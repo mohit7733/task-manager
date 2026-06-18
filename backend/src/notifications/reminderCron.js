@@ -236,7 +236,7 @@ async function processTaskReminders(now, leadHours) {
     const assignees = taskAssigneeLabel(task) || "assignee";
     const target = combineDateAndTime(task.next_review_date, null);
     const reminderType = classifyReminder(target, now, leadHours, { allDay: true });
-    if (!reminderType) continue;
+    if (!reminderType || reminderType === "overdue") continue;
 
     const whenText = formatDateTime(task.next_review_date);
     const title =
