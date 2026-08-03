@@ -18,7 +18,8 @@ const publicShareRoutes = require("./share/share.routes");
 const { startReminderEngine } = require("./notifications/reminderCron");
 
 const app = express();
-connectDb();
+
+app.set("trust proxy", 1);
 
 app.use(helmet());
 app.use(cors());
@@ -47,7 +48,8 @@ app.use(notFound);
 app.use(errorHandler);
 
 const port = process.env.PORT || 5001;
-app.listen(port, () => {
-  startReminderEngine();
+app.listen(port, async () => {
+  await connectDb();
+  await startReminderEngine();
   console.log(`Backend running on port ${port}`);
 });

@@ -1,5 +1,5 @@
 export const API_ORIGIN =
-  (import.meta.env.VITE_API_URL || "https://task-manager-i8ui.onrender.com/api").replace(/\/api\/?$/, "");
+  (import.meta.env.VITE_API_URL || "https://meetingmanager.aimantra.info/api").replace(/\/api\/?$/, "");
 
 export function uploadUrl(path) {
   if (!path) return null;

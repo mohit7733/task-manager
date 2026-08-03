@@ -53,6 +53,7 @@ async function sendEmail({ to, subject, html, text, attachments }) {
     console.log(`[Email] SMTP not configured — would send to ${to}: ${subject}`);
     return { skipped: true, reason: "smtp not configured" };
   }
+  console.log("to", to);
 
   try {
     const info = await transport.sendMail({ from, to, subject, html, text, attachments });
@@ -72,7 +73,7 @@ function fileAttachment(storedPath) {
 }
 
 const APP_NAME = "ExecuFlow";
-const APP_TAGLINE = "Executive Meeting & Task Intelligence";
+const APP_TAGLINE = "Scheduled by the Civil Mantra Management Team";
 
 function escapeHtml(str) {
   if (str == null || str === "") return "";

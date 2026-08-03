@@ -129,12 +129,12 @@ export default function CalendarPage() {
   }, []);
 
   const meetingFcEvents = useMemo(
-    () => meetingEvents.map(apiEventToFullCalendar).filter((e) => e.start),
+    () => meetingEvents.map(apiEventToFullCalendar).filter((e) => e?.start),
     [meetingEvents]
   );
 
   const deptFcEvents = useMemo(
-    () => deptTaskEvents.map(deptTaskEventToFullCalendar).filter((e) => e.start),
+    () => deptTaskEvents.map(deptTaskEventToFullCalendar).filter((e) => e?.start),
     [deptTaskEvents]
   );
 

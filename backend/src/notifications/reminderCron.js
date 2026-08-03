@@ -170,6 +170,45 @@ function isWithinOneHourBefore(meetingAt, now) {
   return !isBefore(now, oneHourBefore) && isBefore(now, meetingAt);
 }
 
+ // Function to send meeting reminders for all users today, without checking time/date logic; just send reminder for today's meetings.
+async function sendAllUpcomingMeetingReminders(now) {
+  const meetings = await Meeting.find({
+    status: { $ne: "Completed" },
+    meeting_date: { $exists: true, $ne: null }
+  }).populate("created_by", "_id email email_notifications_enabled");
+
+  for (const meeting of meetings) {
+    // Only check that meeting is on today's date
+    const meetingDateObj = new Date(meeting.meeting_date);
+    const nowDateObj = new Date(now);
+    // Only send reminders for meetings scheduled for today or in the future (skip past dates)
+    if (meetingDateObj < nowDateObj.setHours(0,0,0,0)) continue;
+
+    const responsible = responsiblePersonLabel(meeting.responsible_person) || "team";
+    const whenText = formatDateTime(meeting.meeting_date, meeting.meeting_time);
+    const extraEmails = meetingResponsibleEmails(meeting);
+    const base = {
+      meeting,
+      creator: meeting.created_by,
+      extraEmails
+    };
+
+    const reminderWhen = formatDateTime(meeting.meeting_date);
+    const reminderKey = `meeting:${meeting._id}:reminder_today`;
+    const title = `Meeting Reminder: ${meeting.title}`;
+    const message = `Reminder for ${responsible}: ${meeting.status} meeting is scheduled for ${whenText} (reminder date ${reminderWhen}).`;
+
+    // Send the reminder email regardless of time/date, send for all meetings
+    await dispatchReminder({
+      ...base,
+      type: "upcoming",
+      title,
+      message,
+      reminderKey
+    });
+  }
+}
+
 async function processMeetingReminders(now) {
   const meetings = await Meeting.find({
     status: { $ne: "Completed" },
@@ -212,6 +251,8 @@ async function processMeetingReminders(now) {
         reminderKey: `meeting:${meeting._id}:reminder_date`
       });
     }
+
+   
 
     // Upcoming — within 1 hour before meeting (at most one email per recipient per day)
     if (isWithinOneHourBefore(meetingAt, now)) {
@@ -268,6 +309,7 @@ async function createReminderNotifications() {
     const now = new Date();
     const users = await User.find({ email_notifications_enabled: { $ne: false } }).select("reminder_lead_hours");
     const leadHours = getLeadHours(users);
+    // await sendAllUpcomingMeetingReminders(now);
     await processMeetingReminders(now);
     await processTaskReminders(now, leadHours);
   } catch (error) {
@@ -276,8 +318,9 @@ async function createReminderNotifications() {
 }
 
 function startReminderEngine() {
-  cron.schedule("*/10 * * * *", createReminderNotifications);
-  console.log("[Reminder] Engine started (every 10 minutes)");
+  // This cron runs at 9:00 AM and 6:00 PM every day
+  cron.schedule("0 9,18 * * *", createReminderNotifications);
+  console.log("[Reminder] Engine started (every day at 9:00 AM and 6:00 PM)");
 }
 
 module.exports = { startReminderEngine, createReminderNotifications };

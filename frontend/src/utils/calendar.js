@@ -54,6 +54,9 @@ export function apiEventToFullCalendar(evt) {
   const colors = kindColor(evt.kind, evt.status, evt.priority);
   const start = toCalendarDate(evt.date, evt.time, evt.allDay);
   const timeLabel = evt.time ? ` ${evt.time}` : "";
+  if (evt.kind === "initial") {
+    console.log(evt);
+  }
   const prefix =
     evt.kind === "followup"
       ? "↻ "
@@ -64,6 +67,8 @@ export function apiEventToFullCalendar(evt) {
           : evt.kind === "reminder"
             ? "🔔 "
             : "";
+
+  if (evt.kind === "reminder" || evt.kind === "initial") return null;
 
   return {
     id: evt.id,
@@ -88,6 +93,7 @@ export function deptTaskEventToFullCalendar(evt) {
         : evt.kind === "remark"
           ? "💬 "
           : "↻ ";
+
 
   return {
     id: evt.id,
