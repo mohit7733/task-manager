@@ -758,11 +758,28 @@ export default function MeetingTable({ meetings, reload, highlightMeetingId, onE
                                         <div>
                                           <p className="text-xs uppercase font-bold text-indigo-600 dark:text-indigo-300">Created</p>
                                           <p className="text-sm font-medium text-slate-800 dark:text-slate-200">{fmtDate(timeline.meeting.task_create_date)}</p>
-                                         {timeline.meeting?.attachment && <Link to={`${uploadUrl(timeline.meeting?.attachment)}`} target="_blank" className="inline-flex items-center gap-1 rounded-full bg-indigo-600 text-white px-3 py-1 text-xs font-semibold dark:bg-indigo-400 mt-2 sm:mt-0">
-                                            <Eye className="h-3 w-3" />
-                                            View MOM document
-                                          </Link>
-                }
+                                          {(() => {
+                                            const files = timeline.meeting?.attachments?.length
+                                              ? timeline.meeting.attachments
+                                              : timeline.meeting?.attachment
+                                                ? [timeline.meeting.attachment]
+                                                : [];
+                                            return files.length > 0 && (
+                                              <div className="mt-2 flex flex-wrap gap-2">
+                                                {files.map((path, i) => (
+                                                  <Link
+                                                    key={i}
+                                                    to={uploadUrl(path)}
+                                                    target="_blank"
+                                                    className="inline-flex items-center gap-1 rounded-full bg-indigo-600 text-white px-3 py-1 text-xs font-semibold dark:bg-indigo-400"
+                                                  >
+                                                    <Eye className="h-3 w-3" />
+                                                    {files.length > 1 ? `Document ${i + 1}` : "View MOM document"}
+                                                  </Link>
+                                                ))}
+                                              </div>
+                                            );
+                                          })()}
 
                                           {timeline.meeting.meeting_link && (
                                             <Link

@@ -15,6 +15,7 @@ import { formatDistanceToNow } from "date-fns";
 import api from "../api/client";
 import { fmtDate } from "../utils/format";
 import { brand } from "../utils/theme";
+import { createPortal } from "react-dom";
 
 const TYPE_CONFIG = {
   upcoming: {
@@ -208,7 +209,7 @@ export default function NotificationDrawer() {
           )}
         </AnimatePresence>
       </button>
-
+        {createPortal(
       <AnimatePresence>
         {open && (
           <>
@@ -359,7 +360,9 @@ export default function NotificationDrawer() {
             </motion.aside>
           </>
         )}
-      </AnimatePresence>
+      </AnimatePresence>,
+       document.body
+      )}
     </>
   );
 }

@@ -15,6 +15,7 @@ import ExternalUsersPage from "./pages/ExternalUsersPage";
 import api from "./api/client";
 import { setSession, logout, toggleTheme } from "./store/store";
 import { brand } from "./utils/theme";
+import PublicCalendarPage from "./pages/PublicCalendarPage";
 
 function AppShell() {
   const dark = useSelector((s) => s.ui.darkMode);
@@ -81,6 +82,7 @@ export default function App() {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/share/:token" element={<GuestSharePage />} />
+      <Route path="/share-calendar/:token" element={<PublicCalendarPage />} />
       <Route
         path="/*"
         element={

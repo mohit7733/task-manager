@@ -1,4 +1,4 @@
-const { addDays, isBefore, startOfDay } = require("date-fns");
+const { addDays, isBefore, startOfDay, endOfDay } = require("date-fns");
 const Meeting = require("./meeting.model");
 const Remark = require("../remarks/remark.model");
 const { sendMeetingAssignedEmail } = require("../shared/emailService");
@@ -34,7 +34,10 @@ function buildFilter(query, user) {
       { "responsible_person.name": new RegExp(query.search, "i") }
     ];
   }
-  if (query.overdue === "true") filter.meeting_date = { $lt: startOfDay(new Date()) };
+  if (query.view === "pending") filter.status = { $in: ["Pending", "In Progress"] };
+  if (query.today === "true") {filter.meeting_date = { $gte: startOfDay(new Date()), $lte: endOfDay(new Date()) };}
+  if (query.upcoming === "true") filter.meeting_date = { $gte: startOfDay(new Date()) };
+  if (query.overdue === "true") {filter.status = { $ne: "Completed" };filter.meeting_date = { $lt: startOfDay(new Date()) };}
   if (query.thisWeek === "true") filter.meeting_date = { $gte: startOfDay(new Date()), $lte: addDays(startOfDay(new Date()), 7) };
   return filter;
 }
@@ -129,6 +132,8 @@ async function createMeeting(req, res) {
   }
 
   const meetingDate = body.meeting_date || new Date();
+  const attachments = (req.files || []).map((f) => `/uploads/${f.filename}`);
+
   const meeting = await Meeting.create({
     ...body,
     created_by: req.user._id,
@@ -137,10 +142,10 @@ async function createMeeting(req, res) {
     initial_meeting_date: body.initial_meeting_date || meetingDate,
     meeting_date: meetingDate,
     meeting_link: body.meeting_link?.trim() || undefined,
-    attachment: req.file ? `/uploads/${req.file.filename}` : body.attachment,
+    attachments,
     responsible_person: responsiblePerson
   });
-   Promise.all(responsiblePerson.map(async (u) => {
+  Promise.all(responsiblePerson.map(async (u) => {
     await sendMeetingAssignedEmail(meeting, { email: u.email, name: u.name }, req.user).catch(() => { });
   }));
   res.status(201).json(meeting);
@@ -276,14 +281,24 @@ async function getCalendarEvents(req, res) {
 async function updateMeeting(req, res) {
   const update = { ...req.body };
   if (req.body.meeting_link) update.meeting_link = req.body.meeting_link.trim();
-  if (req.file) update.attachment = `/uploads/${req.file.filename}`;
   if (update.responsible_person !== undefined) {
     update.responsible_person = parseResponsiblePerson(update.responsible_person);
   }
-  const meeting = await Meeting.findOneAndUpdate({ _id: req.params.id, coo_id: req.user.coo_id }, update, { new: true });
+
+  const newAttachments = (req.files || []).map((f) => `/uploads/${f.filename}`);
+
+  const mongoUpdate = newAttachments.length
+    ? { $set: update, $push: { attachments: { $each: newAttachments } } }
+    : { $set: update };
+
+  const meeting = await Meeting.findOneAndUpdate(
+    { _id: req.params.id, coo_id: req.user.coo_id },
+    mongoUpdate,
+    { new: true }
+  );
   if (!meeting) return res.status(404).json({ message: "Meeting not found" });
   if (update.responsible_person?.length) {
-     Promise.all(update.responsible_person.map(async (u) => {
+    Promise.all(update.responsible_person.map(async (u) => {
       await sendMeetingAssignedEmail(meeting, { email: u.email, name: u.name }, req.user).catch(() => { });
     }));
   }

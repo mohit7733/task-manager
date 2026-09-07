@@ -24,7 +24,7 @@ export default function DashboardPage() {
     api
       .get("/dashboard")
       .then((res) => setData(res.data))
-      .catch(() => {})
+      .catch(() => { })
       .finally(() => setLoading(false));
   };
 
@@ -35,11 +35,11 @@ export default function DashboardPage() {
   }, []);
 
   const stats = [
-    { label: "Pending Meetings", value: data.pending || 0, icon: Clock, color: "text-amber-600", bg: "bg-amber-50 dark:bg-amber-950/40" },
-    { label: "Upcoming Followups", value: data.upcoming || 0, icon: Calendar, color: "text-indigo-600", bg: "bg-indigo-50 dark:bg-indigo-950/40" },
-    { label: "Today's Meetings", value: data.today || 0, icon: CheckCircle2, color: "text-emerald-600", bg: "bg-emerald-50 dark:bg-emerald-950/40" },
-    { label: "Overdue Items", value: data.overdue || 0, icon: AlertCircle, color: "text-red-600", bg: "bg-red-50 dark:bg-red-950/40" },
-  ];
+  { label: "Pending Meetings", value: data.pending || 0, icon: Clock, color: "text-amber-600", bg: "bg-amber-50 dark:bg-amber-950/40", to: "/meetings?view=pending" },
+  { label: "Upcoming Followups", value: data.upcoming || 0, icon: Calendar, color: "text-indigo-600", bg: "bg-indigo-50 dark:bg-indigo-950/40", to: "/meetings?upcoming=true" },
+  { label: "Today's Meetings", value: data.today || 0, icon: CheckCircle2, color: "text-emerald-600", bg: "bg-emerald-50 dark:bg-emerald-950/40", to: "/meetings?today=true" },
+  { label: "Overdue Items", value: data.overdue || 0, icon: AlertCircle, color: "text-red-600", bg: "bg-red-50 dark:bg-red-950/40", to: "/meetings?overdue=true" },
+];
 
   if (loading) {
     return <LoadingSpinner className="min-h-[60vh]" />;
@@ -59,7 +59,11 @@ export default function DashboardPage() {
         {stats.map((stat) => {
           const Icon = stat.icon;
           return (
-            <div key={stat.label} className={brand.statCard}>
+            <Link
+              key={stat.label}
+              to={stat.to}
+              className={`${brand.statCard} block transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-indigo-500`}
+            >
               <div className="flex items-center justify-between p-5">
                 <div>
                   <p className="text-sm font-medium text-slate-500 dark:text-slate-400">{stat.label}</p>
@@ -69,7 +73,7 @@ export default function DashboardPage() {
                   <Icon className="h-6 w-6" />
                 </div>
               </div>
-            </div>
+            </Link>
           );
         })}
       </div>

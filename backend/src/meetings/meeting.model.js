@@ -18,6 +18,7 @@ const meetingSchema = new mongoose.Schema(
     created_by: { type: mongoose.Schema.Types.ObjectId, ref: "PA_User" },
     coo_id: { type: String, required: true, index: true },
     attachment: String,
+    attachments: { type: [String], default: [] },
     meeting_link: String,
     recurrence: { type: String, enum: ["None", "Daily", "Weekly", "Monthly"], default: "None" }
   },

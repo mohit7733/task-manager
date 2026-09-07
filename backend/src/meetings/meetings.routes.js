@@ -13,8 +13,8 @@ const upload = require("../shared/upload");
 router.use(protect);
 router.get("/", listMeetings);
 router.get("/calendar-events", getCalendarEvents);
-router.post("/", upload.single("attachment"), createMeeting);
-router.put("/:id", upload.single("attachment"), updateMeeting);
+router.post("/", upload.array("attachments", 10), createMeeting);
+router.put("/:id", upload.array("attachments", 10), updateMeeting);
 router.get("/:id/timeline", getMeetingTimeline);
 router.delete("/:id", removeMeeting);
 

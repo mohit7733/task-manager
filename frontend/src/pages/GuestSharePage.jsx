@@ -109,11 +109,10 @@ function TimelineRemark({ remark, type, isLast }) {
     <div className="relative flex gap-4 pb-8 last:pb-0">
       {!isLast && <div className="absolute left-[17px] top-10 h-[calc(100%-1.5rem)] w-px bg-gradient-to-b from-indigo-200 to-transparent dark:from-indigo-800" />}
       <div
-        className={`relative z-10 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold shadow-md ring-4 ring-white dark:ring-slate-900 ${
-          isDone
+        className={`relative z-10 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold shadow-md ring-4 ring-white dark:ring-slate-900 ${isDone
             ? "bg-emerald-500 text-white"
             : "bg-gradient-to-br from-amber-400 to-orange-500 text-white"
-        }`}
+          }`}
       >
         {remark.remark_number}
       </div>
@@ -212,7 +211,7 @@ function GuestHero({ type, title, description, status, priority, overdue, meta }
                 Guest view
               </span>
               <span className="rounded-full bg-white/15 px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-white/90 backdrop-blur-sm">
-                {type === "meeting" ? "Meeting" : "Department Task"}
+                {type === "meeting" ? "Meeting" : type === "calendar" ? "Calendar" : "Department Task"}
               </span>
             </div>
             <h1 className="text-2xl font-bold leading-tight text-white sm:text-3xl">{title}</h1>
@@ -456,6 +455,50 @@ function TaskGuestView({ data }) {
     </motion.div>
   );
 }
+function CalendarGuestView({ data }) {
+  const { events } = data;
+  const grouped = useMemo(() => {
+    const map = new Map();
+    events.forEach((e) => {
+      const key = fmtDate(e.date);
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(e);
+    });
+    return Array.from(map.entries()).sort(
+      (a, b) => new Date(events.find((e) => fmtDate(e.date) === a[0]).date) - new Date(events.find((e) => fmtDate(e.date) === b[0]).date)
+    );
+  }, [events]);
+
+  return (
+    <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+      <GuestHero type="calendar" title="Meeting Calendar" description="Read-only schedule view." status="Live" />
+      <InfoPanel title="Schedule" icon={Calendar}>
+        {grouped.length === 0 ? (
+          <p className="text-sm text-slate-500">No events to display.</p>
+        ) : (
+          <div className="divide-y divide-slate-100 dark:divide-slate-800">
+            {grouped.map(([dateLabel, dayEvents]) => (
+              <div key={dateLabel} className="py-3">
+                <p className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">{dateLabel}</p>
+                <div className="space-y-2">
+                  {dayEvents.map((e) => (
+                    <div key={e.id} className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2 dark:bg-slate-800/60">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">{e.title}</p>
+                        <p className="text-xs text-slate-500">{e.label} · {e.meeting_type || "internal"}</p>
+                      </div>
+                      <Badge className={STATUS_STYLES[e.status] || STATUS_STYLES.Pending}>{e.status}</Badge>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </InfoPanel>
+    </motion.div>
+  );
+}
 
 export default function GuestSharePage() {
   const { token } = useParams();
@@ -489,6 +532,7 @@ export default function GuestSharePage() {
     if (!data) return "Shared view";
     if (data.type === "meeting") return data.meeting?.title || "Meeting";
     if (data.type === "task") return data.task?.title || "Task";
+    if (data.type === "calendar") return "Meeting Calendar";
     return "Shared view";
   }, [data]);
 
@@ -542,6 +586,10 @@ export default function GuestSharePage() {
           <MeetingGuestView data={data} />
         ) : data?.type === "task" ? (
           <TaskGuestView data={data} />
+        ) : data?.type === "task" ? (
+          <TaskGuestView data={data} />
+        ) : data?.type === "calendar" ? (
+          <CalendarGuestView data={data} />
         ) : (
           <div className={`p-12 text-center ${brand.card}`}>
             <p className="text-sm text-slate-500">Nothing to display for this link.</p>

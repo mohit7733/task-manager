@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useLocation } from "react-router-dom";
 import {
   Plus,
   RefreshCw,
@@ -18,7 +18,7 @@ import PageHeader from "../components/PageHeader";
 import FormModal, { FieldLabel, fieldClass, FormSection } from "../components/FormModal";
 import LoadingSpinner from "../components/LoadingSpinner";
 import EmptyState from "../components/EmptyState";
-import { buildFormData } from "../utils/upload";
+import { buildFormData, uploadUrl } from "../utils/upload"; 
 import { toInputDate } from "../utils/format";
 import { brand } from "../utils/theme";
 import { mergeUserLists, userSearchText, matchAssigneeKeys } from "../utils/users";
@@ -57,31 +57,36 @@ const EMPTY_FORM = {
   meeting_link: "",
 };
 
-export default function MeetingsPage() {
+function MeetingsPageInner() {
   const [searchParams] = useSearchParams();
   const highlightMeetingId = searchParams.get("meeting");
 
   const [meetings, setMeetings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({
-    status: "",
-    search: "",
-    priority: "",
-    meeting_type: "",
-    overdue: "",
-    thisWeek: "",
+    status: searchParams.get("status") || "",
+    search: searchParams.get("search") || "",
+    priority: searchParams.get("priority") || "",
+    meeting_type: searchParams.get("meeting_type") || "",
+    overdue: searchParams.get("overdue") || "",
+    thisWeek: searchParams.get("thisWeek") || "",
+    view: searchParams.get("view") || "",
+    today: searchParams.get("today") || "",
+    upcoming: searchParams.get("upcoming") || "",
   });
+
   const [stats, setStats] = useState({ total: 0, pending: 0, completed: 0, inProgress: 0 });
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [saving, setSaving] = useState(false);
-  const [attachmentFile, setAttachmentFile] = useState(null);
+  const [attachmentFiles, setAttachmentFiles] = useState([]);
   const [formData, setFormData] = useState(EMPTY_FORM);
   const [users, setUsers] = useState([]);
   const [responsibleSearch, setResponsibleSearch] = useState("");
   const [selectedResponsibleKeys, setSelectedResponsibleKeys] = useState([]);
   const [isResponsibleListOpen, setIsResponsibleListOpen] = useState(false);
   const responsiblePickerRef = useRef(null);
+  const [existingAttachments, setExistingAttachments] = useState([]);
 
   const responsibleMap = useMemo(() => {
     const map = new Map();
@@ -125,11 +130,11 @@ export default function MeetingsPage() {
       setMeetings(items);
       setUsers(mergeUserLists(usersRes, externalRes.data.items));
       setStats({
-        total: items.length,
-        pending: items.filter((m) => m.status === "Pending").length,
+        total: meetingsRes.data.total,
+        pending: items.filter((m) => m.status === "Pending" || m.status === "In Progress").length,
         completed: items.filter((m) => m.status === "Completed").length,
         inProgress: items.filter((m) => m.status === "In Progress").length,
-      });
+      });;
     } catch (error) {
       console.error("Failed to load meetings:", error);
     } finally {
@@ -139,8 +144,17 @@ export default function MeetingsPage() {
 
   useEffect(() => {
     load();
-  }, [filters.status, filters.search, filters.priority, filters.meeting_type, filters.overdue, filters.thisWeek]);
-
+  }, [
+    filters.status,
+    filters.search,
+    filters.priority,
+    filters.meeting_type,
+    filters.overdue,
+    filters.thisWeek,
+    filters.view,
+    filters.today,
+    filters.upcoming,
+  ]);
   useEffect(() => {
     const handleDocumentClick = (event) => {
       if (!responsiblePickerRef.current?.contains(event.target)) {
@@ -160,33 +174,36 @@ export default function MeetingsPage() {
     setShowModal(false);
     setEditingId(null);
     setFormData(EMPTY_FORM);
-    setAttachmentFile(null);
+    setAttachmentFiles([])
     setResponsibleSearch("");
     setSelectedResponsibleKeys([]);
     setIsResponsibleListOpen(false);
+    setExistingAttachments([]);
   };
 
   const openCreateModal = () => {
     setEditingId(null);
     setFormData(EMPTY_FORM);
-    setAttachmentFile(null);
+    setAttachmentFiles([])
     setResponsibleSearch("");
     setSelectedResponsibleKeys([]);
     setIsResponsibleListOpen(false);
     setShowModal(true);
+    setExistingAttachments([]);
   };
 
   const openEditModal = (meeting) => {
-    const nextForm = meetingToForm(meeting);
-    const matchedKeys = matchAssigneeKeys(users, nextForm.responsible_person);
-    setEditingId(meeting._id);
-    setFormData(nextForm);
-    setAttachmentFile(null);
-    setResponsibleSearch("");
-    setSelectedResponsibleKeys(matchedKeys);
-    setIsResponsibleListOpen(false);
-    setShowModal(true);
-  };
+  const nextForm = meetingToForm(meeting);
+  const matchedKeys = matchAssigneeKeys(users, nextForm.responsible_person);
+  setEditingId(meeting._id);
+  setFormData(nextForm);
+  setAttachmentFiles([]);
+  setExistingAttachments(meeting.attachments || (meeting.attachment ? [meeting.attachment] : []));
+  setResponsibleSearch("");
+  setSelectedResponsibleKeys(matchedKeys);
+  setIsResponsibleListOpen(false);
+  setShowModal(true);
+};
 
   const handleResponsibleToggle = (key) => {
     setSelectedResponsibleKeys((prev) => {
@@ -223,7 +240,7 @@ export default function MeetingsPage() {
       if (!editingId) {
         payload.task_create_date = new Date().toISOString();
       }
-      const fd = buildFormData(payload, attachmentFile);
+      const fd = buildFormData(payload, attachmentFiles, "attachments");
       if (editingId) {
         await api.put(`/meetings/${editingId}`, fd);
       } else {
@@ -255,9 +272,17 @@ export default function MeetingsPage() {
     { key: "status", value: "Completed", label: "Completed" },
   ];
 
-  const hasActiveFilters =
-    filters.status || filters.search || filters.priority || filters.meeting_type || filters.overdue || filters.thisWeek;
 
+  const hasActiveFilters =
+    filters.status ||
+    filters.search ||
+    filters.priority ||
+    filters.meeting_type ||
+    filters.overdue ||
+    filters.thisWeek ||
+    filters.view ||
+    filters.today ||
+    filters.upcoming;
   return (
     <div className="space-y-6">
       <PageHeader
@@ -610,18 +635,48 @@ export default function MeetingsPage() {
             <div className="rounded-xl border border-dashed border-indigo-300 bg-white/60 p-3 dark:border-indigo-700 dark:bg-slate-900/40">
               <FieldLabel>
                 <Paperclip className="mr-1 inline h-4 w-4" />
-                Attachment (optional)
+                Attachments (optional)
               </FieldLabel>
+              {existingAttachments.map((path, i) => (
+                <a
+                  key={i}
+                  href={uploadUrl(path)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="block truncate text-xs text-indigo-600 hover:underline dark:text-indigo-400"
+                >
+                  {path.split("/").pop()}
+                </a>
+              ))}
               <input
                 type="file"
+                multiple
                 accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.png,.jpg,.jpeg"
-                onChange={(e) => setAttachmentFile(e.target.files?.[0] || null)}
+                onChange={(e) => {
+                  const newFiles = Array.from(e.target.files || []);
+                  setAttachmentFiles((prev) => {
+                    const existingKeys = new Set(prev.map((f) => `${f.name}-${f.size}`));
+                    const deduped = newFiles.filter((f) => !existingKeys.has(`${f.name}-${f.size}`));
+                    return [...prev, ...deduped];
+                  });
+                }}
                 className="mt-1 block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-indigo-600 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-white hover:file:bg-indigo-500"
               />
-              {attachmentFile && (
-                <p className="mt-2 text-xs text-indigo-700 dark:text-indigo-300">
-                  Selected: {attachmentFile.name} ({(attachmentFile.size / 1024).toFixed(0)} KB)
-                </p>
+              {attachmentFiles.length > 0 && (
+                <div className="mt-2 space-y-1">
+                  {attachmentFiles.map((f, i) => (
+                    <div key={`${f.name}-${i}`} className="flex items-center justify-between text-xs text-indigo-700 dark:text-indigo-300">
+                      <span>{f.name} ({(f.size / 1024).toFixed(0)} KB)</span>
+                      <button
+                        type="button"
+                        onClick={() => setAttachmentFiles((prev) => prev.filter((_, idx) => idx !== i))}
+                        className="font-semibold text-red-500 hover:underline"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
           </FormSection>
@@ -629,4 +684,8 @@ export default function MeetingsPage() {
       </FormModal>
     </div>
   );
+}
+export default function MeetingsPage() {
+  const location = useLocation();
+  return <MeetingsPageInner key={location.search} />;
 }

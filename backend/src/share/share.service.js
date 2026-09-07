@@ -7,6 +7,7 @@ const Task = require("../tasks/task.model");
 const TaskRemark = require("../tasks/taskRemark.model");
 
 const DEFAULT_EXPIRY_DAYS = Number(process.env.SHARE_LINK_EXPIRY_DAYS || 90);
+const CALENDAR_EXPIRY_YEARS = Number(process.env.CALENDAR_SHARE_EXPIRY_YEARS || 100);
 
 function appUrl() {
   return process.env.APP_URL || "https://civilmantra-task-manager.vercel.app";
@@ -52,6 +53,10 @@ function sanitizeRemark(remark) {
   delete obj.task_id;
   return obj;
 }
+function calendarShareUrl(token) {
+  return `${appUrl()}/share-calendar/${token}`;
+}
+
 
 async function ensureShareLink(resourceType, resourceId, cooId) {
   const existing = await ShareLink.findOne({
@@ -81,6 +86,10 @@ async function loadSharePayload(token) {
     expires_at: { $gt: new Date() }
   });
   if (!link) return null;
+
+  if (link.resource_type === "calendar") {
+    return buildCalendarPayload(link.coo_id);
+  }
 
   if (link.resource_type === "meeting") {
     const meeting = await Meeting.findOne({ _id: link.resource_id, coo_id: link.coo_id });
@@ -117,9 +126,114 @@ async function loadSharePayload(token) {
   return null;
 }
 
+function sanitizeCalendarEvent(evt) {
+  // Minimal by design: no time, no discussion/outcome text, no attendee details
+  return {
+    id: evt.id,
+    title: evt.title,
+    status: evt.status,
+    meeting_type: evt.meeting_type,
+    kind: evt.kind,
+    label: evt.label,
+    date: evt.date,
+    allDay: true
+  };
+}
+function sameCalendarDay(a, b) {
+  if (!a || !b) return false;
+  return new Date(a).toDateString() === new Date(b).toDateString();
+}
+
+async function buildCalendarPayload(cooId) {
+  const meetings = await Meeting.find({ coo_id: cooId }).lean();
+  const ids = meetings.map((m) => m._id);
+  const remarks = await Remark.find({ meeting_id: { $in: ids } })
+    .sort({ meeting_id: 1, remark_number: 1 })
+    .lean();
+
+  const remarksByMeeting = {};
+  remarks.forEach((r) => {
+    const key = String(r.meeting_id);
+    if (!remarksByMeeting[key]) remarksByMeeting[key] = [];
+    remarksByMeeting[key].push(r);
+  });
+
+  const events = [];
+
+  for (const m of meetings) {
+    const mId = String(m._id);
+    const rlist = remarksByMeeting[mId] || [];
+    let initial = m.initial_meeting_date;
+    const current = m.meeting_date;
+    if (!initial && rlist.length > 0 && rlist[0].remark_date) initial = rlist[0].remark_date;
+    if (!initial) initial = m.meeting_date;
+
+    const base = { title: m.title, status: m.status, meeting_type: m.meeting_type };
+
+    if (m.task_create_date) {
+      events.push({ ...base, id: `task-${mId}`, kind: "task", label: "Task created", date: m.task_create_date });
+    }
+    const sameAsCurrent = sameCalendarDay(initial, current);
+if (initial && (!sameAsCurrent || !current)) {
+  events.push({ ...base, id: `initial-${mId}`, kind: "initial", label: "First meeting", date: initial });
+}
+if (current) {
+  events.push({
+    ...base,
+    id: `meeting-${mId}`,
+    kind: "meeting",
+    label: m.status === "Completed" ? "Meeting (done)" : "Scheduled meeting",
+    date: current
+  });
+}
+    rlist.forEach((r) => {
+      if (r.next_meeting_date) {
+        events.push({
+          ...base,
+          id: `followup-${mId}-r${r.remark_number}`,
+          kind: "followup",
+          label: `Followup #${r.remark_number}`,
+          date: r.next_meeting_date
+        });
+      }
+    });
+  }
+
+  return { type: "calendar", events: events.map(sanitizeCalendarEvent) };
+}
+
+async function ensureCalendarShareLink(userId, cooId) {
+  const existing = await ShareLink.findOne({
+    resource_type: "calendar",
+    coo_id: cooId,
+    revoked_at: null
+  }).sort({ createdAt: -1 });
+
+  if (existing) return existing.token;
+
+  const token = crypto.randomBytes(24).toString("hex");
+  await ShareLink.create({
+    token,
+    resource_type: "calendar",
+    resource_id: userId,
+    coo_id: cooId,
+    expires_at: new Date(Date.now() + CALENDAR_EXPIRY_YEARS * 365 * 24 * 60 * 60 * 1000)
+  });
+  return token;
+}
+
+async function revokeCalendarShareLink(cooId) {
+  await ShareLink.updateMany(
+    { resource_type: "calendar", coo_id: cooId, revoked_at: null },
+    { revoked_at: new Date() }
+  );
+}
+
 module.exports = {
   appUrl,
   shareUrl,
   ensureShareLink,
-  loadSharePayload
+  loadSharePayload,
+  ensureCalendarShareLink,
+  revokeCalendarShareLink
 };
