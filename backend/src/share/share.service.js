@@ -232,6 +232,7 @@ async function revokeCalendarShareLink(cooId) {
 module.exports = {
   appUrl,
   shareUrl,
+  calendarShareUrl,
   ensureShareLink,
   loadSharePayload,
   ensureCalendarShareLink,
