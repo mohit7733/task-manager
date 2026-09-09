@@ -20,7 +20,8 @@ const meetingSchema = new mongoose.Schema(
     attachment: String,
     attachments: { type: [String], default: [] },
     meeting_link: String,
-    recurrence: { type: String, enum: ["None", "Daily", "Weekly", "Monthly"], default: "None" }
+    recurrence: { type: String, enum: ["None", "Daily", "Weekly", "Monthly"], default: "None" },
+    recurrence_group_id: { type: mongoose.Schema.Types.ObjectId, index: true }
   },
   { timestamps: true }
 );

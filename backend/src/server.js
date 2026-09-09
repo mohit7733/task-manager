@@ -50,6 +50,6 @@ app.use(errorHandler);
 const port = process.env.PORT || 5001;
 app.listen(port, async () => {
   await connectDb();
-  await startReminderEngine();
+  // await startReminderEngine();
   console.log(`Backend running on port ${port}`);
 });

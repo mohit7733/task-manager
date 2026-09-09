@@ -1,7 +1,7 @@
-const { addDays, isBefore, startOfDay, endOfDay } = require("date-fns");
-const Meeting = require("./meeting.model");
+const { addDays, addWeeks, addMonths, isAfter, isBefore, startOfDay, endOfDay } = require("date-fns");const Meeting = require("./meeting.model");
 const Remark = require("../remarks/remark.model");
 const { sendMeetingAssignedEmail } = require("../shared/emailService");
+const mongoose = require("mongoose");
 
 function parseResponsiblePerson(value) {
   if (!value) return [];
@@ -123,6 +123,41 @@ async function listMeetings(req, res) {
     });
   }
 }
+function nthWeekdayOfMonth(date) {
+  return Math.ceil(date.getDate() / 7);
+}
+
+function getMonthlyRecurrenceDate(baseDate, monthsToAdd) {
+  const weekday = baseDate.getDay();
+  const nth = nthWeekdayOfMonth(baseDate);
+  const targetMonthStart = addMonths(new Date(baseDate.getFullYear(), baseDate.getMonth(), 1), monthsToAdd);
+  const firstWeekday = targetMonthStart.getDay();
+  const dayOffset = (weekday - firstWeekday + 7) % 7;
+  const day = 1 + dayOffset + (nth - 1) * 7;
+  const candidate = new Date(targetMonthStart.getFullYear(), targetMonthStart.getMonth(), day);
+  if (candidate.getMonth() !== targetMonthStart.getMonth()) return null; // e.g. no 5th Tuesday this month
+  return candidate;
+}
+
+function generateRecurrenceDates(startDateStr, recurrence, endDateStr) {
+  const start = new Date(startDateStr);
+  const end = endOfDay(new Date(endDateStr));
+  const dates = [];
+  let i = 0;
+  while (i < 366) { // safety cap, ~1 year of daily occurrences max
+    let next;
+    if (recurrence === "Daily") next = addDays(start, i);
+    else if (recurrence === "Weekly") next = addWeeks(start, i);
+    else if (recurrence === "Monthly") next = getMonthlyRecurrenceDate(start, i);
+    else break;
+
+    i++;
+    if (!next) continue; // Monthly: this month had no matching nth weekday, try next month
+    if (isAfter(next, end)) break;
+    dates.push(next);
+  }
+  return dates.length ? dates : [start];
+}
 
 async function createMeeting(req, res) {
   const body = req.body;
@@ -134,21 +169,54 @@ async function createMeeting(req, res) {
   const meetingDate = body.meeting_date || new Date();
   const attachments = (req.files || []).map((f) => `/uploads/${f.filename}`);
 
-  const meeting = await Meeting.create({
+  const isRecurring = body.recurrence && body.recurrence !== "None" && body.recurrence_end_date;
+
+  if (!isRecurring) {
+    const meeting = await Meeting.create({
+      ...body,
+      created_by: req.user._id,
+      coo_id: body.coo_id || req.user.coo_id,
+      task_create_date: body.task_create_date || new Date(),
+      initial_meeting_date: body.initial_meeting_date || meetingDate,
+      meeting_date: meetingDate,
+      meeting_link: body.meeting_link?.trim() || undefined,
+      attachments,
+      responsible_person: responsiblePerson
+    });
+    Promise.all(responsiblePerson.map(async (u) => {
+      await sendMeetingAssignedEmail(meeting, { email: u.email, name: u.name }, req.user).catch(() => { });
+    }));
+    return res.status(201).json(meeting);
+  }
+
+  // Recurring: generate one meeting per occurrence
+  const occurrenceDates = generateRecurrenceDates(meetingDate, body.recurrence, body.recurrence_end_date);
+  const recurrenceGroupId = new mongoose.Types.ObjectId();
+
+  const docs = occurrenceDates.map((date) => ({
     ...body,
     created_by: req.user._id,
     coo_id: body.coo_id || req.user.coo_id,
     task_create_date: body.task_create_date || new Date(),
-    initial_meeting_date: body.initial_meeting_date || meetingDate,
-    meeting_date: meetingDate,
+    initial_meeting_date: date,
+    meeting_date: date,
     meeting_link: body.meeting_link?.trim() || undefined,
     attachments,
-    responsible_person: responsiblePerson
-  });
-  Promise.all(responsiblePerson.map(async (u) => {
-    await sendMeetingAssignedEmail(meeting, { email: u.email, name: u.name }, req.user).catch(() => { });
+    responsible_person: responsiblePerson,
+    recurrence_group_id: recurrenceGroupId
   }));
-  res.status(201).json(meeting);
+
+  const created = await Meeting.insertMany(docs);
+
+  Promise.all(
+    created.flatMap((meeting) =>
+      responsiblePerson.map((u) =>
+        sendMeetingAssignedEmail(meeting, { email: u.email, name: u.name }, req.user).catch(() => { })
+      )
+    )
+  );
+
+  res.status(201).json({ count: created.length, meetings: created });
 }
 
 function sameCalendarSlot(a, b, timeA, timeB) {
@@ -287,6 +355,8 @@ async function updateMeeting(req, res) {
 
   const newAttachments = (req.files || []).map((f) => `/uploads/${f.filename}`);
 
+  const willAddRecurrence = update.recurrence && update.recurrence !== "None" && update.recurrence_end_date;
+
   const mongoUpdate = newAttachments.length
     ? { $set: update, $push: { attachments: { $each: newAttachments } } }
     : { $set: update };
@@ -297,12 +367,63 @@ async function updateMeeting(req, res) {
     { new: true }
   );
   if (!meeting) return res.status(404).json({ message: "Meeting not found" });
+
+  let generatedCount = 0;
+
+  if (willAddRecurrence) {
+    const recurrenceGroupId = meeting.recurrence_group_id || new mongoose.Types.ObjectId();
+    if (!meeting.recurrence_group_id) {
+      await Meeting.updateOne({ _id: meeting._id }, { recurrence_group_id: recurrenceGroupId });
+    }
+
+    const allDates = generateRecurrenceDates(meeting.meeting_date, update.recurrence, update.recurrence_end_date);
+    // Skip the occurrence matching this meeting's own date — it already exists
+    const futureDates = allDates.filter(
+      (d) => d.toDateString() !== new Date(meeting.meeting_date).toDateString()
+    );
+
+    if (futureDates.length) {
+      const attachments = newAttachments.length ? newAttachments : (meeting.attachments || []);
+      const docs = futureDates.map((date) => ({
+        title: meeting.title,
+        description: meeting.description,
+        meeting_type: meeting.meeting_type,
+        meeting_time: meeting.meeting_time,
+        priority: meeting.priority,
+        discussion_topic: meeting.discussion_topic,
+        reminder_date: meeting.reminder_date,
+        meeting_link: meeting.meeting_link,
+        recurrence: update.recurrence,
+        responsible_person: meeting.responsible_person,
+        created_by: req.user._id,
+        coo_id: req.user.coo_id,
+        task_create_date: new Date(),
+        initial_meeting_date: date,
+        meeting_date: date,
+        attachments,
+        recurrence_group_id: recurrenceGroupId,
+        status: "Pending"
+      }));
+      const created = await Meeting.insertMany(docs);
+      generatedCount = created.length;
+
+      Promise.all(
+        created.flatMap((m) =>
+          (meeting.responsible_person || []).map((u) =>
+            sendMeetingAssignedEmail(m, { email: u.email, name: u.name }, req.user).catch(() => { })
+          )
+        )
+      );
+    }
+  }
+
   if (update.responsible_person?.length) {
     Promise.all(update.responsible_person.map(async (u) => {
       await sendMeetingAssignedEmail(meeting, { email: u.email, name: u.name }, req.user).catch(() => { });
     }));
   }
-  res.json(meeting);
+
+  res.json({ ...meeting.toObject(), generatedCount });
 }
 
 async function getMeetingTimeline(req, res) {

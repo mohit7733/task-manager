@@ -18,7 +18,7 @@ import PageHeader from "../components/PageHeader";
 import FormModal, { FieldLabel, fieldClass, FormSection } from "../components/FormModal";
 import LoadingSpinner from "../components/LoadingSpinner";
 import EmptyState from "../components/EmptyState";
-import { buildFormData, uploadUrl } from "../utils/upload"; 
+import { buildFormData, uploadUrl } from "../utils/upload";
 import { toInputDate } from "../utils/format";
 import { brand } from "../utils/theme";
 import { mergeUserLists, userSearchText, matchAssigneeKeys } from "../utils/users";
@@ -37,6 +37,7 @@ function meetingToForm(m) {
     final_outcome: m.final_outcome || "",
     reminder_date: toInputDate(m.reminder_date),
     recurrence: m.recurrence || "None",
+    recurrence_end_date: "",
     meeting_link: m.meeting_link || "",
   };
 }
@@ -55,6 +56,7 @@ const EMPTY_FORM = {
   reminder_date: "",
   recurrence: "None",
   meeting_link: "",
+  recurrence_end_date: "",
 };
 
 function MeetingsPageInner() {
@@ -193,17 +195,17 @@ function MeetingsPageInner() {
   };
 
   const openEditModal = (meeting) => {
-  const nextForm = meetingToForm(meeting);
-  const matchedKeys = matchAssigneeKeys(users, nextForm.responsible_person);
-  setEditingId(meeting._id);
-  setFormData(nextForm);
-  setAttachmentFiles([]);
-  setExistingAttachments(meeting.attachments || (meeting.attachment ? [meeting.attachment] : []));
-  setResponsibleSearch("");
-  setSelectedResponsibleKeys(matchedKeys);
-  setIsResponsibleListOpen(false);
-  setShowModal(true);
-};
+    const nextForm = meetingToForm(meeting);
+    const matchedKeys = matchAssigneeKeys(users, nextForm.responsible_person);
+    setEditingId(meeting._id);
+    setFormData(nextForm);
+    setAttachmentFiles([]);
+    setExistingAttachments(meeting.attachments || (meeting.attachment ? [meeting.attachment] : []));
+    setResponsibleSearch("");
+    setSelectedResponsibleKeys(matchedKeys);
+    setIsResponsibleListOpen(false);
+    setShowModal(true);
+  };
 
   const handleResponsibleToggle = (key) => {
     setSelectedResponsibleKeys((prev) => {
@@ -228,6 +230,10 @@ function MeetingsPageInner() {
       alert("Please select at least one responsible person");
       return;
     }
+    if (formData.recurrence !== "None" && !formData.recurrence_end_date) {
+      alert("Please select an end date for the recurring meeting");
+      return;
+    }
 
     setSaving(true);
     try {
@@ -242,7 +248,10 @@ function MeetingsPageInner() {
       }
       const fd = buildFormData(payload, attachmentFiles, "attachments");
       if (editingId) {
-        await api.put(`/meetings/${editingId}`, fd);
+        const { data } = await api.put(`/meetings/${editingId}`, fd);
+        if (data.generatedCount > 0) {
+          alert(`Meeting updated. ${data.generatedCount} additional recurring meeting(s) created.`);
+        }
       } else {
         await api.post("/meetings", fd);
       }
@@ -492,6 +501,20 @@ function MeetingsPageInner() {
                   <option value="Weekly">Weekly</option>
                   <option value="Monthly">Monthly</option>
                 </select>
+                {formData.recurrence !== "None" && (
+                  <div>
+                    <FieldLabel required>Repeat until</FieldLabel>
+                    <input
+                      type="date"
+                      name="recurrence_end_date"
+                      min={formData.meeting_date}
+                      value={formData.recurrence_end_date}
+                      onChange={handleInputChange}
+                      className={fieldClass}
+                      required
+                    />
+                  </div>
+                )}
               </div>
             </div>
           </FormSection>
