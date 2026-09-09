@@ -1,4 +1,4 @@
-const { loadSharePayload, ensureCalendarShareLink, revokeCalendarShareLink, shareUrl } = require("./share.service");
+const { loadSharePayload, ensureCalendarShareLink, revokeCalendarShareLink, shareUrl, calendarShareUrl  } = require("./share.service");
 
 async function getPublicShare(req, res) {
   try {
