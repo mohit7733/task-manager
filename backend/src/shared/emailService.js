@@ -1,9 +1,15 @@
 const path = require("path");
 const fs = require("fs");
 const nodemailer = require("nodemailer");
+const { Resend } = require("resend");
 const { ensureShareLink, shareUrl, appUrl } = require("../share/share.service");
 
 let transporter = null;
+let resendClient = null;
+
+function getProvider() {
+  return (process.env.EMAIL_PROVIDER || "smtp").toLowerCase();
+}
 
 function getTransporter() {
   if (transporter) return transporter;
@@ -18,6 +24,13 @@ function getTransporter() {
     }
   });
   return transporter;
+}
+
+function getResendClient() {
+  if (resendClient) return resendClient;
+  if (!process.env.RESEND_API_KEY || process.env.EMAIL_ENABLED === "false") return null;
+  resendClient = new Resend(process.env.RESEND_API_KEY);
+  return resendClient;
 }
 
 function fmtDate(d) {
@@ -46,24 +59,57 @@ function fmtTime(t) {
 
 async function sendEmail({ to, subject, html, text, attachments }) {
   if (!to) return { skipped: true, reason: "no recipient" };
+
+  const provider = getProvider();
+  console.log(`[Email] Attempting send to: ${to} via ${provider}`);
+
+  if (provider === "resend") {
+    const client = getResendClient();
+    if (!client) {
+      console.log(`[Email] Resend not configured — would send to ${to}: ${subject}`);
+      return { skipped: true, reason: "resend not configured" };
+    }
+    const from = process.env.EMAIL_FROM || "ExecuFlow <onboarding@resend.dev>";
+    try {
+      const { data, error } = await client.emails.send({
+        from,
+        to,
+        subject,
+        html,
+        text,
+        attachments: (attachments || []).map((a) => ({
+          filename: a.filename,
+          path: a.path
+        }))
+      });
+      if (error) {
+        console.error("[Email] Resend send failed:", error.message || error);
+        return { sent: false, error: error.message || String(error) };
+      }
+      console.log(`[Email] Sent successfully via Resend — id: ${data?.id}`);
+      return { sent: true, messageId: data?.id };
+    } catch (err) {
+      console.error("[Email] Resend send failed:", err.message);
+      return { sent: false, error: err.message };
+    }
+  }
+
+  // Default: SMTP via nodemailer
   const transport = getTransporter();
   const from = process.env.SMTP_FROM || process.env.SMTP_USER || "noreply@execuflow.app";
-
   if (!transport) {
     console.log(`[Email] SMTP not configured — would send to ${to}: ${subject}`);
     return { skipped: true, reason: "smtp not configured" };
   }
-  console.log("to", to);
-
   try {
     const info = await transport.sendMail({ from, to, subject, html, text, attachments });
+    console.log(`[Email] Sent successfully via SMTP — messageId: ${info.messageId}`);
     return { sent: true, messageId: info.messageId };
   } catch (err) {
-    console.error("Email send failed:", err.message);
+    console.error("[Email] SMTP send failed:", err.message);
     return { sent: false, error: err.message };
   }
 }
-
 function fileAttachment(storedPath) {
   if (!storedPath) return null;
   const rel = storedPath.replace(/^\//, "");
