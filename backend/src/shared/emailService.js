@@ -64,24 +64,25 @@ async function sendEmail({ to, subject, html, text, attachments }) {
   console.log(`[Email] Attempting send to: ${to} via ${provider}`);
 
   if (provider === "resend") {
-    const client = getResendClient();
-    if (!client) {
-      console.log(`[Email] Resend not configured — would send to ${to}: ${subject}`);
-      return { skipped: true, reason: "resend not configured" };
-    }
-    const from = process.env.EMAIL_FROM || "ExecuFlow <onboarding@resend.dev>";
-    try {
-      const { data, error } = await client.emails.send({
-        from,
-        to,
-        subject,
-        html,
-        text,
-        attachments: (attachments || []).map((a) => ({
-          filename: a.filename,
-          path: a.path
-        }))
-      });
+  const client = getResendClient();
+  if (!client) {
+    console.log(`[Email] Resend not configured — would send to ${to}: ${subject}`);
+    return { skipped: true, reason: "resend not configured" };
+  }
+  const from = process.env.EMAIL_FROM || "ExecuFlow <onboarding@resend.dev>";
+  const toList = Array.isArray(to) ? to : String(to).split(",").map((s) => s.trim()).filter(Boolean);
+  try {
+    const { data, error } = await client.emails.send({
+      from,
+      to: toList,
+      subject,
+      html,
+      text,
+      attachments: (attachments || []).map((a) => ({
+        filename: a.filename,
+        path: a.path
+      }))
+    });
       if (error) {
         console.error("[Email] Resend send failed:", error.message || error);
         return { sent: false, error: error.message || String(error) };
