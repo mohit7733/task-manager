@@ -76,7 +76,7 @@ function CalendarPanel({ loading, view, events, onEventClick, onEventDrop, empty
       nowIndicator
       eventTimeFormat={{ hour: "2-digit", minute: "2-digit", hour12: true }}
       headerToolbar={{ left: "prev,next today", center: "title", right: "" }}
-      dayMaxEventRows={false}
+      dayMaxEventRows={3}
       moreLinkClick="popover"
       eventDisplay="block"
     />

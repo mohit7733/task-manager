@@ -123,8 +123,9 @@ function MeetingsPageInner() {
   const load = async () => {
     setLoading(true);
     try {
+      const effectiveLimit = highlightMeetingId ? 1000 : 25;
       const [meetingsRes, usersRes, externalRes] = await Promise.all([
-        api.get("/meetings", { params: { ...filters, limit: 25 } }),
+        api.get("/meetings", { params: { ...filters, limit: effectiveLimit } }),
         fetch("https://hrms.aimantra.info/wfm/ourcompanyuserlessdetail/v3/null/null/").then((res) => res.json()),
         api.get("/external-users", { params: { limit: 500 } }),
       ]);
