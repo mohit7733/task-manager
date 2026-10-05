@@ -7,6 +7,26 @@ const { ensureShareLink, shareUrl, appUrl } = require("../share/share.service");
 let transporter = null;
 let resendClient = null;
 
+const EMAIL_QUEUE_DELAY_MS = 150; // ~6-7 req/sec, under Resend's 10/sec limit
+let emailQueue = Promise.resolve();
+
+function queueEmailSend(fn) {
+  const run = emailQueue.then(
+    () =>
+      new Promise((resolve) => {
+        setTimeout(async () => {
+          try {
+            resolve(await fn());
+          } catch (err) {
+            resolve({ sent: false, error: err?.message || String(err) });
+          }
+        }, EMAIL_QUEUE_DELAY_MS);
+      })
+  );
+  emailQueue = run.catch(() => {});
+  return run;
+}
+
 function getProvider() {
   return (process.env.EMAIL_PROVIDER || "smtp").toLowerCase();
 }
@@ -72,8 +92,9 @@ async function sendEmail({ to, subject, html, text, attachments }) {
   }
   const from = process.env.EMAIL_FROM || "ExecuFlow <onboarding@resend.dev>";
   const toList = Array.isArray(to) ? to : String(to).split(",").map((s) => s.trim()).filter(Boolean);
-  try {
-    const { data, error } = await client.emails.send({
+
+  return queueEmailSend(async () => {
+    const payload = {
       from,
       to: toList,
       subject,
@@ -83,7 +104,17 @@ async function sendEmail({ to, subject, html, text, attachments }) {
         filename: a.filename,
         path: a.path
       }))
-    });
+    };
+
+    try {
+      let { data, error } = await client.emails.send(payload);
+
+      // one retry if we still hit the rate limit
+      if (error && (error.statusCode === 429 || error.name === "rate_limit_exceeded")) {
+        await new Promise((r) => setTimeout(r, 1000));
+        ({ data, error } = await client.emails.send(payload));
+      }
+
       if (error) {
         console.error("[Email] Resend send failed:", error.message || error);
         return { sent: false, error: error.message || String(error) };
@@ -94,7 +125,8 @@ async function sendEmail({ to, subject, html, text, attachments }) {
       console.error("[Email] Resend send failed:", err.message);
       return { sent: false, error: err.message };
     }
-  }
+  });
+}
 
   // Default: SMTP via nodemailer
   const transport = getTransporter();
