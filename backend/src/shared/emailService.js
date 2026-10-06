@@ -7,6 +7,26 @@ const { ensureShareLink, shareUrl, appUrl } = require("../share/share.service");
 let transporter = null;
 let resendClient = null;
 
+const EMAIL_QUEUE_DELAY_MS = 150; // ~6-7 req/sec, under Resend's 10/sec limit
+let emailQueue = Promise.resolve();
+
+function queueEmailSend(fn) {
+  const run = emailQueue.then(
+    () =>
+      new Promise((resolve) => {
+        setTimeout(async () => {
+          try {
+            resolve(await fn());
+          } catch (err) {
+            resolve({ sent: false, error: err?.message || String(err) });
+          }
+        }, EMAIL_QUEUE_DELAY_MS);
+      })
+  );
+  emailQueue = run.catch(() => {});
+  return run;
+}
+
 function getProvider() {
   return (process.env.EMAIL_PROVIDER || "smtp").toLowerCase();
 }
@@ -146,7 +166,8 @@ async function sendEmail({ to, subject, html, text, attachments, provider: provi
       console.error("[Email] Resend send failed:", err.message);
       return { sent: false, error: err.message, provider };
     }
-  }
+  });
+}
 
   // SMTP via nodemailer (env or per-request smtp details)
   const transport = smtp ? createSmtpTransport(smtp) : getTransporter();
