@@ -1,4 +1,4 @@
-const { addDays, addWeeks, addMonths, isAfter, isBefore, startOfDay, endOfDay } = require("date-fns");const Meeting = require("./meeting.model");
+const { addDays, addWeeks, addMonths, isAfter, isBefore, startOfDay, endOfDay } = require("date-fns"); const Meeting = require("./meeting.model");
 const Remark = require("../remarks/remark.model");
 const { sendMeetingAssignedEmail } = require("../shared/emailService");
 const mongoose = require("mongoose");
@@ -35,9 +35,9 @@ function buildFilter(query, user) {
     ];
   }
   if (query.view === "pending") filter.status = { $in: ["Pending", "In Progress"] };
-  if (query.today === "true") {filter.meeting_date = { $gte: startOfDay(new Date()), $lte: endOfDay(new Date()) };}
+  if (query.today === "true") { filter.meeting_date = { $gte: startOfDay(new Date()), $lte: endOfDay(new Date()) }; }
   if (query.upcoming === "true") filter.meeting_date = { $gte: startOfDay(new Date()) };
-  if (query.overdue === "true") {filter.status = { $ne: "Completed" };filter.meeting_date = { $lt: startOfDay(new Date()) };}
+  if (query.overdue === "true") { filter.status = { $ne: "Completed" }; filter.meeting_date = { $lt: startOfDay(new Date()) }; }
   if (query.thisWeek === "true") filter.meeting_date = { $gte: startOfDay(new Date()), $lte: addDays(startOfDay(new Date()), 7) };
   return filter;
 }
@@ -440,11 +440,163 @@ async function removeMeeting(req, res) {
   res.json({ success: true });
 }
 
+/**
+ * POST /api/meetings/send-upcoming-emails
+ * Emails all today + future (upcoming) meetings to responsible persons via SMTP.
+ *
+ * Body (optional):
+ * {
+ *   "smtp": { "host", "port", "secure", "user", "pass", "from" },
+ *   "meetingIds": ["..."],   // optional — only these meetings
+ *   "dryRun": false
+ * }
+ */
+async function sendUpcomingMeetingEmails(req, res) {
+  try {
+    const { smtp, meetingIds, dryRun = false, startDate, date } = req.body || {};
+    const smtpConfig = smtp && typeof smtp === "object" ? smtp : undefined;
+
+    if (!smtpConfig && !process.env.SMTP_HOST) {
+      return res.status(400).json({
+        message: "SMTP not configured. Pass smtp details in body or set SMTP_* env vars."
+      });
+    }
+
+    const today = startOfDay(new Date(startDate));
+    const filter = {
+      coo_id: req.user.coo_id,
+      meeting_date: { $gte: today },
+      status: { $ne: "Completed" }
+    };
+
+    // If date is provided, set upper bound for meeting_date
+    if (date) {
+      const endDate = new Date(date);
+      if (isNaN(endDate.getTime())) {
+        return res.status(400).json({
+          message: "Invalid date format. Please provide a valid date."
+        });
+      }
+      filter.meeting_date.$lte = endOfDay(endDate);
+    }
+
+    if (Array.isArray(meetingIds) && meetingIds.length) {
+      filter._id = { $in: meetingIds };
+    }
+
+    const meetings = await Meeting.find(filter).sort({ meeting_date: 1 });
+
+    const results = [];
+    let sent = 0;
+    let failed = 0;
+    let skipped = 0;
+
+    for (const meeting of meetings) {
+      const people = Array.isArray(meeting.responsible_person) ? meeting.responsible_person : [];
+      if (!people.length) {
+        skipped += 1;
+        results.push({
+          meetingId: meeting._id,
+          title: meeting.title,
+          status: "skipped",
+          reason: "no responsible person"
+        });
+        continue;
+      }
+
+      for (const person of people) {
+        if (!person?.email) {
+          skipped += 1;
+          results.push({
+            meetingId: meeting._id,
+            title: meeting.title,
+            to: null,
+            status: "skipped",
+            reason: "missing email"
+          });
+          continue;
+        }
+
+        if (dryRun) {
+          skipped += 1;
+          results.push({
+            meetingId: meeting._id,
+            title: meeting.title,
+            meeting_date: meeting.meeting_date,
+            to: person.email,
+            status: "dry_run"
+          });
+          continue;
+        }
+
+        const result = await sendMeetingAssignedEmail(
+          meeting,
+          { email: person.email, name: person.name || person.email },
+          req.user,
+          { provider: "smtp", smtp: smtpConfig }
+        );
+
+        if (result?.sent) {
+          sent += 1;
+          results.push({
+            meetingId: meeting._id,
+            title: meeting.title,
+            to: person.email,
+            status: "sent",
+            messageId: result.messageId
+          });
+        } else if (result?.skipped) {
+          skipped += 1;
+          results.push({
+            meetingId: meeting._id,
+            title: meeting.title,
+            to: person.email,
+            status: "skipped",
+            reason: result.reason
+          });
+        } else {
+          failed += 1;
+          results.push({
+            meetingId: meeting._id,
+            title: meeting.title,
+            to: person.email,
+            status: "failed",
+            error: result?.error || "unknown error"
+          });
+        }
+      }
+    }
+
+    res.json({
+      success: failed === 0,
+      provider: "smtp",
+      range: date ? `today_to_${new Date(date).toISOString().split('T')[0]}` : "today_and_future",
+      dateRange: {
+        from: today.toISOString().split('T')[0],
+        to: date ? new Date(date).toISOString().split('T')[0] : "no_limit"
+      },
+      dryRun,
+      meetingsFound: meetings.length,
+      sent,
+      failed,
+      skipped,
+      results
+    });
+  } catch (error) {
+    console.error("sendUpcomingMeetingEmails error:", error);
+    res.status(500).json({
+      message: "Failed to send upcoming meeting emails",
+      error: error.message
+    });
+  }
+}
+
 module.exports = {
   listMeetings,
   createMeeting,
   updateMeeting,
   getMeetingTimeline,
   getCalendarEvents,
-  removeMeeting
+  removeMeeting,
+  sendUpcomingMeetingEmails
 };

@@ -11,18 +11,24 @@ function getProvider() {
   return (process.env.EMAIL_PROVIDER || "smtp").toLowerCase();
 }
 
+function createSmtpTransport(smtp = {}) {
+  const host = smtp.host || process.env.SMTP_HOST;
+  if (!host) return null;
+  return nodemailer.createTransport({
+    host,
+    port: Number(smtp.port ?? process.env.SMTP_PORT ?? 587),
+    secure: String(smtp.secure ?? process.env.SMTP_SECURE ?? "false") === "true",
+    auth: {
+      user: smtp.user || process.env.SMTP_USER,
+      pass: smtp.pass || process.env.SMTP_PASS
+    }
+  });
+}
+
 function getTransporter() {
   if (transporter) return transporter;
   if (!process.env.SMTP_HOST || process.env.EMAIL_ENABLED === "false") return null;
-  transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: Number(process.env.SMTP_PORT || 587),
-    secure: process.env.SMTP_SECURE === "true",
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS
-    }
-  });
+  transporter = createSmtpTransport();
   return transporter;
 }
 
@@ -57,10 +63,55 @@ function fmtTime(t) {
   }
 }
 
-async function sendEmail({ to, subject, html, text, attachments }) {
-  if (!to) return { skipped: true, reason: "no recipient" };
+function parseFromAddress(from) {
+  const match = String(from || "").match(/^(.*?)\s*<([^>]+)>$/);
+  if (match) {
+    return {
+      name: match[1].replace(/^["']|["']$/g, "").trim(),
+      email: match[2].trim()
+    };
+  }
+  return { name: "", email: String(from || "").trim() };
+}
 
-  const provider = getProvider();
+function getFromAddress() {
+  return (
+    process.env.EMAIL_FROM ||
+    process.env.SMTP_FROM ||
+    process.env.SMTP_USER ||
+    "Meeting Manager <onboarding@resend.dev>"
+  );
+}
+
+function getReplyTo() {
+  return process.env.EMAIL_REPLY_TO || parseFromAddress(getFromAddress()).email || undefined;
+}
+
+/** Headers that improve inbox placement (Gmail/Yahoo expect unsubscribe for bulk-like mail). */
+function deliverabilityHeaders({ to } = {}) {
+  const base = appUrl().replace(/\/$/, "");
+  const unsubUrl = `${base}/notifications/preferences`;
+  const replyTo = getReplyTo();
+  return {
+    "List-Unsubscribe": `<${unsubUrl}>${replyTo ? `, <mailto:${replyTo}?subject=unsubscribe>` : ""}`,
+    "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+    "X-Entity-Ref-ID": `execuflow-${Date.now()}-${String(to || "").slice(0, 24)}`
+  };
+}
+
+async function sendEmail({ to, subject, html, text, attachments, provider: providerOverride, smtp }) {
+  if (!to) return { skipped: true, reason: "no recipient" };
+  if (process.env.EMAIL_ENABLED === "false") {
+    console.log(`[Email] disabled — would send to ${to}: ${subject}`);
+    return { skipped: true, reason: "email disabled" };
+  }
+
+  const provider = (providerOverride || getProvider() || "smtp").toLowerCase();
+  const from =
+    (smtp && (smtp.from || smtp.user)) ||
+    getFromAddress();
+  const replyTo = getReplyTo();
+  const headers = deliverabilityHeaders({ to });
   console.log(`[Email] Attempting send to: ${to} via ${provider}`);
 
   if (provider === "resend") {
@@ -69,45 +120,56 @@ async function sendEmail({ to, subject, html, text, attachments }) {
       console.log(`[Email] Resend not configured — would send to ${to}: ${subject}`);
       return { skipped: true, reason: "resend not configured" };
     }
-    const from = process.env.EMAIL_FROM || "ExecuFlow <onboarding@resend.dev>";
     try {
-      const { data, error } = await client.emails.send({
+      const payload = {
         from,
         to,
         subject,
         html,
         text,
+        replyTo,
+        headers,
+        tags: [{ name: "app", value: "execuflow" }],
         attachments: (attachments || []).map((a) => ({
           filename: a.filename,
           path: a.path
         }))
-      });
+      };
+      const { data, error } = await client.emails.send(payload);
       if (error) {
         console.error("[Email] Resend send failed:", error.message || error);
         return { sent: false, error: error.message || String(error) };
       }
       console.log(`[Email] Sent successfully via Resend — id: ${data?.id}`);
-      return { sent: true, messageId: data?.id };
+      return { sent: true, messageId: data?.id, provider };
     } catch (err) {
       console.error("[Email] Resend send failed:", err.message);
-      return { sent: false, error: err.message };
+      return { sent: false, error: err.message, provider };
     }
   }
 
-  // Default: SMTP via nodemailer
-  const transport = getTransporter();
-  const from = process.env.SMTP_FROM || process.env.SMTP_USER || "noreply@execuflow.app";
+  // SMTP via nodemailer (env or per-request smtp details)
+  const transport = smtp ? createSmtpTransport(smtp) : getTransporter();
   if (!transport) {
     console.log(`[Email] SMTP not configured — would send to ${to}: ${subject}`);
     return { skipped: true, reason: "smtp not configured" };
   }
   try {
-    const info = await transport.sendMail({ from, to, subject, html, text, attachments });
+    const info = await transport.sendMail({
+      from,
+      to,
+      subject,
+      html,
+      text,
+      replyTo,
+      headers,
+      attachments
+    });
     console.log(`[Email] Sent successfully via SMTP — messageId: ${info.messageId}`);
-    return { sent: true, messageId: info.messageId };
+    return { sent: true, messageId: info.messageId, provider: "smtp" };
   } catch (err) {
     console.error("[Email] SMTP send failed:", err.message);
-    return { sent: false, error: err.message };
+    return { sent: false, error: err.message, provider: "smtp" };
   }
 }
 function fileAttachment(storedPath) {
@@ -118,8 +180,10 @@ function fileAttachment(storedPath) {
   return { filename: path.basename(abs), path: abs };
 }
 
-const APP_NAME = "ExecuFlow";
-const APP_TAGLINE = "Scheduled by the Civil Mantra Management Team";
+const APP_NAME = process.env.EMAIL_APP_NAME || "Civil Mantra Meeting Manager";
+const APP_TAGLINE = process.env.EMAIL_APP_TAGLINE || "Scheduled by the Civil Mantra Management Team";
+const COMPANY_ADDRESS =
+  process.env.EMAIL_COMPANY_ADDRESS || "Civil Mantra · Internal notifications only";
 
 function escapeHtml(str) {
   if (str == null || str === "") return "";
@@ -166,10 +230,15 @@ function statusBadge(text, variant = "default") {
 function standardFooterHtml({ guest = false } = {}) {
   const url = escapeHtml(appUrl());
   const app = escapeHtml(APP_NAME);
-  if (guest) {
-    return `This email includes a secure read-only guest link. For full access, sign in at <a href="${url}" style="color:#4f46e5;font-weight:600">${app}</a>.`;
-  }
-  return `Need assistance? Contact your administrator or open <a href="${url}" style="color:#4f46e5;font-weight:600">${app}</a>.`;
+  const reply = escapeHtml(getReplyTo() || "");
+  const company = escapeHtml(COMPANY_ADDRESS);
+  const accessLine = guest
+    ? `This email includes a secure read-only link. Sign in at <a href="${url}" style="color:#4f46e5;font-weight:600">${app}</a> for full access.`
+    : `Need help? Contact your administrator or open <a href="${url}" style="color:#4f46e5;font-weight:600">${app}</a>.`;
+  const unsubLine = reply
+    ? `You received this because you are assigned in ${app}. Reply to <a href="mailto:${reply}" style="color:#64748b">${reply}</a> to stop these emails.`
+    : `You received this because you are assigned in ${app}.`;
+  return `${accessLine}<br><br><span style="color:#94a3b8;font-size:12px">${unsubLine}<br>${company}</span>`;
 }
 
 function emailStyles() {
@@ -265,7 +334,7 @@ function emailBaseTemplate({ title, preheader, body, ctaLabel, ctaLink, customFo
               <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
                 <tr>
                   <td align="center">
-                    <div style="display:inline-block;width:48px;height:48px;border-radius:12px;background:rgba(255,255,255,0.18);line-height:48px;font-weight:700;color:#ffffff;font-size:16px;letter-spacing:0.04em">EF</div>
+                    <div style="display:inline-block;width:48px;height:48px;border-radius:12px;background:rgba(255,255,255,0.18);line-height:48px;font-weight:700;color:#ffffff;font-size:14px;letter-spacing:0.04em">CM</div>
                   </td>
                 </tr>
                 <tr>
@@ -293,7 +362,7 @@ function emailBaseTemplate({ title, preheader, body, ctaLabel, ctaLink, customFo
           </tr>
         </table>
         <p style="margin:16px 0 0;font-size:12px;color:#94a3b8;font-family:'Segoe UI',Roboto,Arial,sans-serif">
-          &copy; ${new Date().getFullYear()} ${APP_NAME}. All rights reserved.
+          &copy; ${new Date().getFullYear()} ${escapeHtml(APP_NAME)}. This is a transactional notification, not marketing.
         </p>
       </td>
     </tr>
@@ -405,10 +474,10 @@ function buildPlainText({ greeting, message, rows = [], ctaLabel, ctaLink }) {
   return lines.join("\n");
 }
 
-async function sendMeetingAssignedEmail(meeting, data, creator) {
+async function sendMeetingAssignedEmail(meeting, data, creator, options = {}) {
   const to = data.email;
   const name = data.name;
-  if (!to || !name) return;
+  if (!to || !name) return { skipped: true, reason: "no recipient" };
   const shareToken = await ensureShareLink("meeting", meeting._id, meeting.coo_id);
   const subject = `Meeting Assigned: ${meeting.title}`;
   const ctaLink = shareUrl(shareToken);
@@ -443,7 +512,14 @@ async function sendMeetingAssignedEmail(meeting, data, creator) {
     ctaLink
   });
 
-  return sendEmail({ to, subject, html, text });
+  return sendEmail({
+    to,
+    subject,
+    html,
+    text,
+    provider: options.provider,
+    smtp: options.smtp
+  });
 }
 
 async function sendTaskAssignedEmail(task, data, creator) {
@@ -663,7 +739,7 @@ async function sendReminderEmail({ to, title, message, type, meeting, task }) {
     html,
     text: buildPlainText({
       greeting: "Hello,",
-      message: `${message}${type === "overdue" ? " (Action required)" : ""}`,
+      message: message,
       rows: plainRows,
       ctaLabel,
       ctaLink
