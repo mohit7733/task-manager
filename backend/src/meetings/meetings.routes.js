@@ -5,7 +5,8 @@ const {
   updateMeeting,
   getMeetingTimeline,
   getCalendarEvents,
-  removeMeeting
+  removeMeeting,
+  sendUpcomingMeetingEmails
 } = require("./meetings.controller");
 const { protect } = require("../shared/middleware/authMiddleware");
 const upload = require("../shared/upload");
@@ -13,6 +14,7 @@ const upload = require("../shared/upload");
 router.use(protect);
 router.get("/", listMeetings);
 router.get("/calendar-events", getCalendarEvents);
+router.post("/send-upcoming-emails", sendUpcomingMeetingEmails);
 router.post("/", upload.array("attachments", 10), createMeeting);
 router.put("/:id", upload.array("attachments", 10), updateMeeting);
 router.get("/:id/timeline", getMeetingTimeline);
