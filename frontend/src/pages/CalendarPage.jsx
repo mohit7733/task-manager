@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
@@ -15,6 +15,7 @@ import {
   Tag,
   RefreshCw,
   Building2,
+  Download,
 } from "lucide-react";
 import api from "../api/client";
 import { fmtDate, formatResponsiblePerson } from "../utils/format";
@@ -53,7 +54,16 @@ const DEPT_LEGEND = [
   { color: "#0ea5e9", label: "Followup review date" },
 ];
 
-function CalendarPanel({ loading, view, events, onEventClick, onEventDrop, emptyMessage }) {
+function CalendarPanel({
+  loading,
+  view,
+  events,
+  onEventClick,
+  onEventDrop,
+  emptyMessage,
+  calRef,
+  exporting,
+}) {
   if (loading) {
     return <LoadingSpinner label="Loading calendar…" className="py-20" />;
   }
@@ -62,6 +72,7 @@ function CalendarPanel({ loading, view, events, onEventClick, onEventDrop, empty
   }
   return (
     <FullCalendar
+      ref={calRef}
       plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
       initialView={view}
       key={`${view}-${events.length}`}
@@ -76,7 +87,7 @@ function CalendarPanel({ loading, view, events, onEventClick, onEventDrop, empty
       nowIndicator
       eventTimeFormat={{ hour: "2-digit", minute: "2-digit", hour12: true }}
       headerToolbar={{ left: "prev,next today", center: "title", right: "" }}
-      dayMaxEventRows={3}
+      dayMaxEventRows={exporting ? false : 3}
       moreLinkClick="popover"
       eventDisplay="block"
     />
@@ -92,6 +103,11 @@ export default function CalendarPage() {
   const [loadingDept, setLoadingDept] = useState(true);
   const [view, setView] = useState("dayGridMonth");
   const [selected, setSelected] = useState(null);
+
+  // PDF export
+  const calRef = useRef(null);
+  const exportRef = useRef(null);
+  const [exporting, setExporting] = useState(false);
 
   const loadMeetings = async () => {
     setLoadingMeeting(true);
@@ -141,6 +157,81 @@ export default function CalendarPage() {
   const activeEvents = tab === "meeting" ? meetingFcEvents : deptFcEvents;
   const legend = tab === "meeting" ? MEETING_LEGEND : DEPT_LEGEND;
   const loading = tab === "meeting" ? loadingMeeting : loadingDept;
+
+  const handleDownloadPdf = async () => {
+    const calApi = calRef.current?.getApi();
+    if (!calApi || !exportRef.current) return;
+
+    const title = calApi.view.title; // e.g. "October 2026" (follows prev/next)
+    const tabLabel = tab === "meeting" ? "Meeting Calendar" : "Task Calendar";
+
+    setExporting(true);
+    try {
+      // let FullCalendar re-render with all events expanded (no "+N more")
+      await new Promise((r) => setTimeout(r, 450));
+
+      const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+        import("html2canvas-pro"),
+        import("jspdf"),
+      ]);
+
+      const canvas = await html2canvas(exportRef.current, {
+        scale: 2,
+        backgroundColor: "#ffffff",
+        useCORS: true,
+        onclone: (doc) => {
+          // always print in light mode, and show full event titles
+          doc.documentElement.classList.remove("dark");
+          const s = doc.createElement("style");
+          s.textContent =
+            ".fc-event-main,.fc-event-title,.fc-event-time{white-space:normal!important;overflow:visible!important}";
+          doc.head.appendChild(s);
+        },
+      });
+
+      const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+      const pageW = pdf.internal.pageSize.getWidth();
+      const pageH = pdf.internal.pageSize.getHeight();
+      const margin = 10;
+      const headerH = 12;
+
+      pdf.setFontSize(15);
+      pdf.setTextColor(30, 41, 59);
+      pdf.text(`${tabLabel} - ${title}`, margin, margin + 5);
+      pdf.setFontSize(8);
+      pdf.setTextColor(100, 116, 139);
+      pdf.text(
+        `Generated ${new Date().toLocaleDateString("en-IN", {
+          day: "numeric",
+          month: "short",
+          year: "numeric",
+        })}`,
+        pageW - margin,
+        margin + 5,
+        { align: "right" }
+      );
+
+      const maxW = pageW - margin * 2;
+      const maxH = pageH - margin * 2 - headerH;
+      const ratio = Math.min(maxW / canvas.width, maxH / canvas.height);
+      const w = canvas.width * ratio;
+      const h = canvas.height * ratio;
+
+      pdf.addImage(
+        canvas.toDataURL("image/png"),
+        "PNG",
+        margin + (maxW - w) / 2,
+        margin + headerH,
+        w,
+        h
+      );
+      pdf.save(`${tabLabel.replace(/\s+/g, "-")}-${title.replace(/\s+/g, "-")}.pdf`);
+    } catch (e) {
+      console.error("PDF export failed", e);
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const onEventClick = (info) => {
     const props = info.event.extendedProps || {};
@@ -252,6 +343,15 @@ export default function CalendarPage() {
           <RefreshCw className={`h-4 w-4 ${loadingMeeting || loadingDept ? "animate-spin" : ""}`} />
           Refresh
         </button>
+        <button
+          type="button"
+          onClick={handleDownloadPdf}
+          disabled={exporting || loading || activeEvents.length === 0}
+          className={brand.btnSecondary}
+        >
+          <Download className="h-4 w-4" />
+          {exporting ? "Preparing…" : "Download PDF"}
+        </button>
         <div className={brand.tabGroup}>
           <button
             type="button"
@@ -295,35 +395,45 @@ export default function CalendarPage() {
         ))}
       </div>
 
-      <div className={brand.legendBar}>
-        {legend.map((l) => (
-          <span key={l.label} className="inline-flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400">
-            <span className="h-3 w-3 rounded-sm" style={{ backgroundColor: l.color }} />
-            {l.label}
-          </span>
-        ))}
-      </div>
+      {/* Everything inside this wrapper is captured in the PDF */}
+      <div ref={exportRef} className="space-y-5">
+        <div className={brand.legendBar}>
+          {legend.map((l) => (
+            <span
+              key={l.label}
+              className="inline-flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400"
+            >
+              <span className="h-3 w-3 rounded-sm" style={{ backgroundColor: l.color }} />
+              {l.label}
+            </span>
+          ))}
+        </div>
 
-      <div className={`${brand.card} p-4 [&_.fc]:text-sm`}>
-        {tab === "meeting" ? (
-          <CalendarPanel
-            loading={loadingMeeting}
-            view={view}
-            events={meetingFcEvents}
-            onEventClick={onEventClick}
-            onEventDrop={onMeetingDrop}
-            emptyMessage="No meeting events yet. Add meetings from the Meetings page."
-          />
-        ) : (
-          <CalendarPanel
-            loading={loadingDept}
-            view={view}
-            events={deptFcEvents}
-            onEventClick={onEventClick}
-            onEventDrop={onDeptDrop}
-            emptyMessage="No department tasks yet. Add tasks from Dept. Tasks page."
-          />
-        )}
+        <div className={`${brand.card} p-4 [&_.fc]:text-sm`}>
+          {tab === "meeting" ? (
+            <CalendarPanel
+              loading={loadingMeeting}
+              view={view}
+              events={meetingFcEvents}
+              onEventClick={onEventClick}
+              onEventDrop={onMeetingDrop}
+              emptyMessage="No meeting events yet. Add meetings from the Meetings page."
+              calRef={calRef}
+              exporting={exporting}
+            />
+          ) : (
+            <CalendarPanel
+              loading={loadingDept}
+              view={view}
+              events={deptFcEvents}
+              onEventClick={onEventClick}
+              onEventDrop={onDeptDrop}
+              emptyMessage="No department tasks yet. Add tasks from Dept. Tasks page."
+              calRef={calRef}
+              exporting={exporting}
+            />
+          )}
+        </div>
       </div>
 
       <p className="text-center text-xs text-slate-400">
