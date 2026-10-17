@@ -166,8 +166,7 @@ async function sendEmail({ to, subject, html, text, attachments, provider: provi
       console.error("[Email] Resend send failed:", err.message);
       return { sent: false, error: err.message, provider };
     }
-  });
-}
+  }
 
   // SMTP via nodemailer (env or per-request smtp details)
   const transport = smtp ? createSmtpTransport(smtp) : getTransporter();
@@ -196,7 +195,7 @@ async function sendEmail({ to, subject, html, text, attachments, provider: provi
 function fileAttachment(storedPath) {
   if (!storedPath) return null;
   const rel = storedPath.replace(/^\//, "");
-  const abs = path.join(__dirname, "..", "..", rel);
+  const abs = path.join(__dirname, "..", "..", rel); bn 
   if (!fs.existsSync(abs)) return null;
   return { filename: path.basename(abs), path: abs };
 }
